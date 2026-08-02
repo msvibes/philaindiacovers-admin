@@ -3,22 +3,23 @@
 import { useState } from "react";
 import Papa from "papaparse";
 
-// Columns match the `covers` table (docs/API-Integration-Contracts.md §6.4),
-// except `postal_circle` here is the human-readable circle name, not the
-// postal_circle_id FK — resolving that name to an id is T-05's job, not T-02's.
-type CoverRow = {
-  image_file: string;
-  name_of_cover: string;
-  gi_item_name: string;
-  gi_registration_number: string;
-  product_category: string;
-  cancellation_description: string;
-  cachet_description: string;
-  overall_description: string;
-  postal_circle: string;
-  place_of_issue: string;
-  date_of_issue: string;
-};
+// Headers match the real import spreadsheet exactly (not database column
+// names) — see ../Data/PhilaIndiaCovers-PLabs.xlsx for the source format.
+const CSV_COLUMNS = [
+  "Image File Name",
+  "Name of the Cover",
+  "Name of the GI Tag / Item",
+  "Product Category",
+  "Description of Cancellation",
+  "Description of Cachet",
+  "Overall Description",
+  "Issuing Postal Circle",
+  "Place of Issue",
+  "Date of Issue",
+] as const;
+
+type CoverColumn = (typeof CSV_COLUMNS)[number];
+type CoverRow = Record<CoverColumn, string>;
 
 type PreviewRow = {
   rowNumber: number;
@@ -26,19 +27,12 @@ type PreviewRow = {
   missingImage: boolean;
 };
 
-const CSV_COLUMNS: (keyof CoverRow)[] = [
-  "image_file",
-  "name_of_cover",
-  "gi_item_name",
-  "gi_registration_number",
-  "product_category",
-  "cancellation_description",
-  "cachet_description",
-  "overall_description",
-  "postal_circle",
-  "place_of_issue",
-  "date_of_issue",
-];
+// CSV/formula-injection defense: a cell opened by Excel/Sheets starting with
+// =, +, -, or @ can execute as a formula. Strip any leading run of those
+// characters before the value is used anywhere, including the preview.
+function sanitizeCell(value: string): string {
+  return value.replace(/^[=+\-@]+/, "");
+}
 
 export default function BulkImportPage() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -60,6 +54,7 @@ export default function BulkImportPage() {
     Papa.parse<CoverRow>(csvFile, {
       header: true,
       skipEmptyLines: true,
+      transform: sanitizeCell,
       complete: (results) => {
         if (results.errors.length > 0) {
           setParseError(results.errors[0].message);
@@ -68,7 +63,7 @@ export default function BulkImportPage() {
         const rows: PreviewRow[] = results.data.map((data, i) => ({
           rowNumber: i + 1,
           data,
-          missingImage: !imageFileNames.has((data.image_file ?? "").trim()),
+          missingImage: !imageFileNames.has((data["Image File Name"] ?? "").trim()),
         }));
         setPreview(rows);
       },
@@ -163,7 +158,7 @@ export default function BulkImportPage() {
                     <td className="px-3 py-2 whitespace-nowrap">
                       {row.missingImage ? (
                         <span className="text-red-600 font-medium">
-                          Missing image: {row.data.image_file || "(blank)"}
+                          Missing image: {row.data["Image File Name"] || "(blank)"}
                         </span>
                       ) : (
                         <span className="text-green-700">OK</span>
