@@ -97,7 +97,7 @@ Breaking all 42 stories into full task-level detail now — before any code exis
 
 | Task ID | Linked Story | Description | Explicit Non-Goals | Verification Check |
 |---|---|---|---|---|
-| T-01 | US-36 | Set up Supabase project (Mumbai region), create the `covers` table per §6.4 schema, seed `postal_circles` with the 23 official circles | No RLS policies yet — that's T-04 | Query `postal_circles` returns exactly 23 rows matching the official list |
+| T-01 | US-36 | Set up Supabase project (Mumbai region), create the `profiles` table (needed first — `covers.verified_by` is a hard FK to it) and the `covers` table per §6.4 schema, seed `postal_circles` with the 23 official circles | No RLS policies yet — that's T-04 | Query `postal_circles` returns exactly 23 rows matching the official list |
 | T-02 | US-36 | Build the admin bulk-import screen: upload a CSV + image files, validate every referenced filename exists, show a preview of failures | No duplicate-detection yet — that's T-03. No actual DB insert yet — that's T-05 | Upload a test CSV with one deliberately-missing image; preview correctly flags that one row and no others |
 | T-03 | US-36, FR-17 | Add duplicate detection to the import preview: flag rows matching an existing cover's GI Item + Date of Issue | — | Import a CSV containing one deliberate duplicate of an already-seeded test cover; only that row is flagged |
 | T-04 | US-35 | Write RLS policies for `covers`: Admin full r/w, Verifier read-only on `draft`/`flagged`, Collector read-only on `verified` | No `verify_cover()` function yet — that's T-06 | Attempt a direct Verifier-role UPDATE on `covers` via the Supabase client; confirm it's rejected by the database, not just hidden in UI |
