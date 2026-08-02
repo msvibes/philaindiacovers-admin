@@ -10,6 +10,11 @@
 // same function before persisting or displaying a cell. Do not
 // re-implement this logic separately; import it.
 export function sanitizeCsvCell(value: string): string {
+  // Defensive guard: the type signature says `string`, but a Papa Parse
+  // config change (or any other future caller) could pass null/undefined
+  // for a blank cell. Fail safe to "" rather than throwing mid-import.
+  if (value == null) return "";
+
   let result = value;
   let previous: string;
   do {

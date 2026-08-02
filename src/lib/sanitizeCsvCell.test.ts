@@ -4,7 +4,15 @@ import { sanitizeCsvCell } from "./sanitizeCsvCell";
 describe("sanitizeCsvCell", () => {
   it("leaves plain text untouched", () => {
     expect(sanitizeCsvCell("Normal text")).toBe("Normal text");
+  });
+
+  it("handles an empty string safely (real case: blank Product Category rows)", () => {
     expect(sanitizeCsvCell("")).toBe("");
+  });
+
+  it("handles null/undefined defensively, in case a future Papa Parse config change passes either for a blank cell", () => {
+    expect(sanitizeCsvCell(null as unknown as string)).toBe("");
+    expect(sanitizeCsvCell(undefined as unknown as string)).toBe("");
   });
 
   it("strips a leading dangerous character", () => {
