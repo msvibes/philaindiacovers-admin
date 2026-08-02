@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Papa from "papaparse";
+import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 
 // Headers match the real import spreadsheet exactly (not database column
 // names) — see ../Data/PhilaIndiaCovers-PLabs.xlsx for the source format.
@@ -27,21 +28,6 @@ type PreviewRow = {
   missingImage: boolean;
 };
 
-// CSV/formula-injection defense: a cell opened by Excel/Sheets starting with
-// =, +, -, or @ can execute as a formula. Strip any leading run of those
-// characters before the value is used anywhere, including the preview.
-// Loops so a leading-space evasion (" =cmd...") or nested runs (" = =cmd")
-// are fully neutralized, not just an unspaced leading character.
-function sanitizeCell(value: string): string {
-  let result = value;
-  let previous: string;
-  do {
-    previous = result;
-    result = result.replace(/^\s+/, "").replace(/^[=+\-@]+/, "");
-  } while (result !== previous);
-  return result;
-}
-
 export default function BulkImportPage() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -62,7 +48,7 @@ export default function BulkImportPage() {
     Papa.parse<CoverRow>(csvFile, {
       header: true,
       skipEmptyLines: true,
-      transform: sanitizeCell,
+      transform: sanitizeCsvCell,
       complete: (results) => {
         if (results.errors.length > 0) {
           setParseError(results.errors[0].message);
