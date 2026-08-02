@@ -13,6 +13,9 @@ Admin (data entry, bulk import, corrections) and Verifier (review/verify/flag on
 - Bulk import must validate every image filename exists BEFORE creating any entries, and must flag likely duplicates (matching GI Item + Date of Issue against existing covers of any status) — see FR-17, FR-20.
 - A corrected Flagged entry returns to pending-review, not directly back to Verified — only the Verifier can re-mark it Verified (FR-24). Don't build a shortcut around this even for the Admin's convenience.
 
+## Reference docs
+Full schema definitions and task-level requirements live in `docs/` — check `docs/API-Integration-Contracts.md` (schema/API contracts) and `docs/AI-Agent-Implementation-Brief.md` (task breakdown) before starting any story.
+
 ## Testing
 [Fill in once a test runner is chosen during initial setup]
 
