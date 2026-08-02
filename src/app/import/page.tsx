@@ -30,8 +30,16 @@ type PreviewRow = {
 // CSV/formula-injection defense: a cell opened by Excel/Sheets starting with
 // =, +, -, or @ can execute as a formula. Strip any leading run of those
 // characters before the value is used anywhere, including the preview.
+// Loops so a leading-space evasion (" =cmd...") or nested runs (" = =cmd")
+// are fully neutralized, not just an unspaced leading character.
 function sanitizeCell(value: string): string {
-  return value.replace(/^[=+\-@]+/, "");
+  let result = value;
+  let previous: string;
+  do {
+    previous = result;
+    result = result.replace(/^\s+/, "").replace(/^[=+\-@]+/, "");
+  } while (result !== previous);
+  return result;
 }
 
 export default function BulkImportPage() {
