@@ -17,7 +17,7 @@ Admin (data entry, bulk import, corrections) and Verifier (review/verify/flag on
 Full schema definitions and task-level requirements live in `docs/` — check `docs/API-Integration-Contracts.md` (schema/API contracts) and `docs/AI-Agent-Implementation-Brief.md` (task breakdown) before starting any story.
 
 ## Testing
-[Fill in once a test runner is chosen during initial setup]
+Vitest for pure-logic/security-relevant units (`npm test`). Not a UI testing setup — component/E2E coverage is undecided; add here when that's chosen.
 
 ## Branch/PR conventions
 Same as the consumer app repo: branch per story, PR to `main`, self-reviewed before merge.
