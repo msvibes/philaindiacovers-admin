@@ -77,3 +77,19 @@ Format follows Michael Nygard's widely-adopted ADR convention (used broadly acro
 **Decision:** GitHub Actions, native to the already-chosen repo host.
 
 **Consequences:** Zero new signup, generous free tier at this project's scale, and it scales cleanly later (more platforms, more automation) without switching tools.
+
+---
+
+## ADR-007: "Enable Automatic RLS" Checked Project-Wide at Supabase Project Creation
+
+**Status:** Accepted
+
+**Context:** By default, Supabase's Data API can expose any table with a base GRANT to `anon`/`authenticated`, whether or not Row-Level Security is enabled on it — a newly created table with no explicit `ENABLE ROW LEVEL SECURITY` statement (easy to forget mid-iteration on a schema) is fully readable/writable by anyone holding the right key, not filtered at all, until someone remembers to lock it down.
+
+**Decision:** "Enable automatic RLS" was checked at project creation, alongside "Automatically expose new tables" being deliberately unchecked (see the grant-related notes in `.claude/PROGRESS.md` and the T-03/T-04 migration comments). Every new table in this project gets RLS enabled by default the moment it's created, regardless of whether it's created via the dashboard, the CLI, or a raw SQL migration.
+
+This setting lived only in the original project-setup conversation and was never written down anywhere in `docs/` — it had to be reconstructed empirically during T-04 by querying `pg_class.relrowsecurity` and finding it `true` on `profiles` and `postal_circles`, neither of which any migration ever explicitly enabled RLS on. This ADR exists so a future session can just read this instead of re-deriving it from migration forensics.
+
+**Consequences:** A new table with zero RLS policies defaults to deny-all for every non-owner role — safe by construction, not by discipline. Combined with "Automatically expose new tables" being off, this project's default posture for any new table is: no grants, no access, until both are explicitly added — deliberately locked-down-by-default, at the cost of needing explicit setup (grant + policies) for every table rather than either half working automatically. This is what makes a blanket `ALTER DEFAULT PRIVILEGES ... TO authenticated` (T-04) safe to set up ahead of time for all future tables, the same way T-03's fix already did for `service_role`: the grant alone never bypasses RLS, so `collection_items`, `wishlist_items`, `verification_audit_log`, and anything created later will be both grant-covered and RLS-locked-down the moment they exist, not wide open until their own task remembers to enable RLS. Any future Supabase project for this product (e.g. the eventual production project, per the Environment-separation plan) must have this same setting checked at creation — it isn't something a migration can retroactively enable for a project that started without it.
+
+**Addendum, found while verifying this ADR's own premise (2026-08-04):** "Automatically expose new tables" being off only suppresses the CRUD privileges (SELECT/INSERT/UPDATE/DELETE) from the project's baseline default grant to `anon`/`authenticated` — it does **not** suppress TRUNCATE, REFERENCES, TRIGGER, or MAINTAIN, which both roles had by default on every table (`covers`, `profiles`, `postal_circles`) independent of anything any migration asked for. TRUNCATE does not evaluate RLS at all in Postgres, so this meant the fully public `anon` key could truncate any of these tables regardless of RLS policy — a real, live gap, not a theoretical one. Fixed by explicit `REVOKE` on the existing tables and on the default ACL going forward (`20260804180223_revoke_rls_bypassing_privileges.sql`, `20260804180432_revoke_maintain_privilege.sql`). Worth checking for on any future Supabase project created the same way — the checkbox handles RLS-enablement and CRUD-grant-suppression, but evidently not these four privilege types, at least as this project's baseline was provisioned.

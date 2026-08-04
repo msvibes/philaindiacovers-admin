@@ -11,7 +11,7 @@ Start here. This tells you which document to open based on what you're actually 
 → **`High-Level-Design.md`** 📦 — context diagram, container diagram, entity relationships, the verification-status state machine, the security trust-boundary diagram, key sequence flows. Best for a technical walkthrough or architecture review conversation.
 
 ## "Why did we choose Electron / Supabase / two repos / Microsoft Store / this specific security pattern?"
-→ **`Architecture-Decision-Records.md`** ✅ — six short records (Context → Decision → Consequences) covering every major technical call, with the tradeoffs we knowingly accepted written down, not just the decision itself.
+→ **`Architecture-Decision-Records.md`** ✅ — seven short records (Context → Decision → Consequences) covering every major technical call, with the tradeoffs we knowingly accepted written down, not just the decision itself.
 
 ## "I'm about to actually build something — what's the detailed design?"
 → **`Low-Level-Design.md`** 📦 — deliberately scoped to only what's currently being built (the Walking Skeleton, T-01–T-09), extended task-by-task as work progresses. Don't expect this to cover stories that haven't started yet — that's intentional, not a gap.

@@ -9,13 +9,12 @@
 -- authenticated (not just service_role, which was already fixed
 -- separately). RLS alone only filters rows on top of an existing GRANT —
 -- without the base GRANT, every query fails outright with a permission
--- error instead of being properly row-filtered. Deliberately scoped
--- per-table here (not a blanket ALTER DEFAULT PRIVILEGES like the
--- service_role fix), matching Supabase's own stated reasoning for the new
--- default-off behavior: explicit per-table grants for anon/authenticated
--- are a deliberate, reviewable security feature, not something to route
--- around uniformly. Future tables get their own explicit grant+RLS
--- treatment when their own task picks them up.
+-- error instead of being properly row-filtered. This explicit grant is
+-- still needed even after the later default_privileges_authenticated
+-- migration adds a blanket ALTER DEFAULT PRIVILEGES for authenticated
+-- (see ADR-007) — default privileges only apply to objects created AFTER
+-- that statement runs; covers already existed before it, so it needs its
+-- own grant regardless.
 grant select, insert, update, delete on covers to authenticated;
 -- Deliberately no anon grant: covers has no anon-facing use case in the
 -- locked design (API-Integration-Contracts.md's RLS Policy Summary has no
