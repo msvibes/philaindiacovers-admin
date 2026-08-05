@@ -9,6 +9,14 @@
 // still handles both shapes plus blanks defensively: the spreadsheet gets
 // added to over time, and there's no guarantee every future entry is
 // typed in cleanly.
+//
+// The day-first conclusion is about DISPLAY FORMAT, not just proof that
+// the underlying VALUES are right — a separate risk is whether whatever
+// process converted an earlier snapshot's free-text DD.MM.YYYY dates into
+// this file's "clean" Excel dates preserved day/month order correctly.
+// Checked exhaustively (not sampled): all 140 of the earlier snapshot's
+// free-text rows cross-referenced against this file by Image File Name —
+// zero mismatches. See PROGRESS.md (2026-08-05) for the full result.
 export type DateParseResult = { ok: true; isoDate: string } | { ok: false; error: string };
 
 function toIsoDate(day: number, month: number, year: number, original: string): DateParseResult {
