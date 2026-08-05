@@ -109,10 +109,11 @@ Seeded once with the 23 officially verified India Post circles (see Reference Da
 - **Does:** validates `p_new_status` is `verified` or `flagged`; requires `p_reason` when flagging; updates the cover's `verification_status`/`verified_by`/`verified_at`; inserts a matching row into `verification_audit_log` — all atomically, in one transaction
 - **Satisfies:** FR-22, FR-23, FR-24, FR-25
 
-### Bulk import (Edge Function, not a simple table insert)
+### Bulk import (server-side, not a client-direct table insert)
 - **Callable by:** Admin role only
 - **Does:** accepts the spreadsheet + image files; validates every referenced image filename exists before creating anything; checks each row's GI Item + Date of Issue against existing `covers` rows (any status) and flags likely duplicates; creates `draft` entries only for rows that pass; returns a per-row success/failure report for the import-preview screen
 - **Satisfies:** FR-17, FR-20
+- **Implemented as (T-05, 2026-08-05):** a Next.js Route Handler (`POST /api/confirm-import`, Admin repo), not a Supabase Edge Function as this section originally said — corrected here directly rather than left as a task-level exception. Uses the service-role key server-side, same pattern as `/api/check-duplicate-covers` (T-03), to reuse existing tooling rather than introduce a second (Deno) runtime. This is an implementation-detail correction, not a change to any of the three items under "Status: LOCKED" below.
 
 ### Collector stats (view or lightweight function)
 - **Does:** computes completeness % (owned ÷ total Verified), the "not yet in my Collection" list, and Purchased-only spend total with a separate non-Purchased count
