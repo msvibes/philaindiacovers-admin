@@ -106,8 +106,15 @@ Seeded once with the 23 officially verified India Post circles (see Reference Da
 
 ### `verify_cover(p_cover_id uuid, p_new_status text, p_reason text default null)`
 - **Callable by:** Verifier role only
-- **Does:** validates `p_new_status` is `verified` or `flagged`; requires `p_reason` when flagging; updates the cover's `verification_status`/`verified_by`/`verified_at`; inserts a matching row into `verification_audit_log` — all atomically, in one transaction
-- **Satisfies:** FR-22, FR-23, FR-24, FR-25
+- **Does:** validates `p_new_status` is `verified` or `flagged`; requires `p_reason` when flagging (rejects both `NULL` and an empty/whitespace-only string); updates the cover's `verification_status`/`verified_by`/`verified_at`; inserts a matching row into `verification_audit_log` — all atomically, in one transaction
+- **Satisfies:** FR-22, FR-23, FR-25
+
+### `reset_reviewed_to_draft_on_admin_correction()` — `BEFORE UPDATE` trigger on `covers` (named `reset_flagged_to_draft_on_admin_correction()` until the same-day extension below)
+- **Fires for:** Admin role only, on a plain `UPDATE` (not `verify_cover()`, which Admin can't call) that leaves a `flagged` or `verified` row at the same status
+- **Does:** resets `verification_status` to `draft` and logs `action = 'correction_resubmitted'` to `verification_audit_log`, atomically with the triggering `UPDATE`
+- **Satisfies:** FR-24, §3.4 (ongoing catalogue accuracy, not just at first verification)
+- **Corrected here (T-06, 2026-08-06):** FR-24 was originally tagged onto `verify_cover()` above, which is wrong — FR-24 governs the Admin's correction path, and Admin can never call `verify_cover()` (Verifier-only), so that function alone could never have satisfied it. This trigger is the actual enforcement.
+- **Extended same day:** originally only reset `flagged` rows. A plain Admin `UPDATE` on a `verified` row's metadata was the same open gap — without a reset, a Verified cover's data could drift out of accuracy with the physical cover it describes and stay marked Verified indefinitely, arguably worse than the Flagged case since Verified is what collectors are shown as trustworthy. Function and trigger renamed from `*_flagged_*` to `*_reviewed_*` to match.
 
 ### Bulk import (server-side, not a client-direct table insert)
 - **Callable by:** Admin role only
