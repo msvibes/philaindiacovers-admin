@@ -89,6 +89,23 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
     return data.id as string;
   }
 
+  async function createVerifiedCover(suffix: string) {
+    const { data, error } = await admin
+      .from("covers")
+      .insert({
+        name_of_cover: `${runId} ${suffix}`,
+        verification_status: "verified",
+        place_of_issue: "Original place of issue",
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new Error(`Failed to seed verified cover: ${error?.message}`);
+    }
+    coverIds.push(data.id);
+    return data.id as string;
+  }
+
   beforeAll(async () => {
     users.admin = await createTestUser("admin");
     users.verifier = await createTestUser("verifier");
@@ -253,6 +270,31 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
       .single();
     expect(error).toBeNull();
     expect(updated?.place_of_issue).toBe("Corrected place of issue");
+    expect(updated?.verification_status).toBe("draft");
+
+    const { data: logs } = await admin
+      .from("verification_audit_log")
+      .select("action, performed_by")
+      .eq("cover_id", coverId);
+    expect(logs).toHaveLength(1);
+    expect(logs![0].action).toBe("correction_resubmitted");
+    expect(logs![0].performed_by).toBe(users.admin.userId);
+  });
+
+  it("FR-24: Admin correcting a Verified cover's metadata via a plain UPDATE resets it to draft, logged as correction_resubmitted", async () => {
+    const coverId = await createVerifiedCover("admin-correction-verified");
+
+    const { data: updated, error } = await users.admin.client
+      .from("covers")
+      .update({ place_of_issue: "Corrected place of issue" })
+      .eq("id", coverId)
+      .select("verification_status, place_of_issue")
+      .single();
+    expect(error).toBeNull();
+    expect(updated?.place_of_issue).toBe("Corrected place of issue");
+    // A Verified cover's data must not silently drift out of accuracy while
+    // still showing as trustworthy — same guardrail as the Flagged case,
+    // arguably more important since Verified is what collectors see.
     expect(updated?.verification_status).toBe("draft");
 
     const { data: logs } = await admin
