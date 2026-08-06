@@ -1,10 +1,13 @@
 # Progress Snapshot — philaindiacovers-admin
 
-**Last updated:** 2026-08-05
-**Last session worked on:** T-05 (US-36) — actual DB insert + image upload for bulk import
+**Last updated:** 2026-08-06
+**Last session worked on:** T-06 (US-39) — `verify_cover()` function + `verification_audit_log`
 
 ## Current state
-`main` is at `c0d09b2`. Five Walking Skeleton tasks now done and merged:
+`main` is at `9268c93`. Six Walking Skeleton tasks now done; T-06 built and verified this session, on branch `us-39-t06-verify-cover` (not yet merged — PR to be opened via GitHub web UI, `gh` still not installed).
+- **T-06**: `verification_audit_log` table created (migration `20260806195850_create_verify_cover_function.sql`), RLS: Admin SELECT-only, no direct write for any role. `verify_cover(p_cover_id, p_new_status, p_reason default null)` — `SECURITY DEFINER`, reuses T-04's `current_profile_role()` for the role check (rejects non-Verifier callers), validates `p_new_status` is `verified`/`flagged`, requires `p_reason` when flagging, updates `covers.verification_status`/`verified_by`/`verified_at` and inserts the audit row atomically (one transaction — Postgres function body, not app-level). Per ADR-005/FR-25: Verifier still has zero direct table grant on `covers`; this function is its only write path. Covered by `src/lib/verifyCover.integration.test.ts` (6 tests, same live-Supabase pattern as T-04's `coversRls.integration.test.ts`): flag-without-reason rejected with no audit row written, flag-with-reason succeeds with exactly one audit row, verify-without-reason succeeds, invalid status rejected, Admin and Collector both rejected by the database (not just hidden in UI). Full suite: 50/50 passing.
+
+Five earlier Walking Skeleton tasks done and merged:
 - **T-01**: Supabase project (`hcaivtygzwjemjngcmji`) linked; `profiles`, `postal_circles`, `covers` tables created; `postal_circles` seeded with all 23 official circles (verified by direct query). Merged via PR #1.
 - **T-02**: `/import` bulk-import screen — upload CSV + images, parse client-side, preview which rows' image file is missing. Uses the real spreadsheet's headers (not DB column names). Merged via PR #2, after several review-driven hardening rounds (real CSV headers, formula-injection sanitization incl. a leading-space bypass fix, sanitizer extracted to shared `src/lib/sanitizeCsvCell.ts`, Vitest suite, null/undefined guard).
 - **T-03**: added duplicate detection as its own distinct flag ("Likely duplicate", separate from "Missing image") — matches an incoming row's GI Item + Date of Issue against existing `covers` of any `verification_status`. Merged via PR #3.
@@ -48,10 +51,10 @@
 **Jira status (confirmed 2026-08-06):** US-35 Done, US-36 Done, all other 40 stories To Do.
 
 ## In progress
-Nothing in progress. T-05 is done — verified live (5 real rows through the actual UI — GI-number extraction, postal-circle normalization, within-batch duplicate rejection, and the upload-then-cleanup-on-insert-failure path all confirmed against the real database, then cleaned up), covered by a 5-test integration suite, and merged into `main` via PR #5.
+**T-06 is code-complete and verified live** (migration pushed to the dev project, 6/6 new integration tests passing, full suite 50/50) but **not yet merged** — still on branch `us-39-t06-verify-cover`, no PR opened yet. Next session (or later this one): open the PR via GitHub web UI (no `gh` CLI), self-review, merge, then update this file and Jira.
 
 ## Next up
-**T-06** (US-39, FR-22, FR-23): implement `verify_cover()` — Verifier-only, validates reason-if-flagged, updates `covers.verification_status` + writes to `verification_audit_log` atomically. Should reuse `current_profile_role()` (T-04's helper) for the role check, not a new ad-hoc one — see the gotcha below.
+Once T-06 is merged: **T-06.5** (US-34, EPIC-08) — Admin/Verifier login UI + session verification. Sits between T-06 and T-07 in the Walking Skeleton table because it also closes the `/api/check-duplicate-covers` and `/api/confirm-import` access-control gaps (see gotchas below), and T-07 is the first task that needs a real logged-in Verifier account to test against.
 
 ## Known gotchas from recent sessions
 - **`/api/check-duplicate-covers` AND `/api/confirm-import` still have NO access control — deliberately not closed by T-04/T-05, both owned by T-06.5.** T-05's route is the more serious of the two: it writes `covers` rows and uploads to Storage, not just reads. Closing this needs real application-level auth (login, session verification, route-level role check), none of which exists anywhere in either app yet. **T-06.5** (Admin/Verifier login for the back-office, US-34/EPIC-08, added to `docs/AI-Agent-Implementation-Brief.md` between T-06 and T-07) covers building that login and closing both gaps as part of the same work. Its Explicit Non-Goals also flag that T-08/T-09 will hit an analogous gap in the App repo (no Collector session to test against), which T-06.5 does not address — that's the consumer app's own auth flow, a separate concern.
