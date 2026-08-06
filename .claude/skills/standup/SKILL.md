@@ -7,6 +7,8 @@ allowed-tools: Bash, Read, Edit
 
 Run this at the START of every work session, before touching any code.
 
+0. **Repo-identity guard — run this before anything else, no exceptions.** Run `git remote -v` and confirm the output contains `philaindiacovers-admin` (this repo's own expected remote name). If it does not — wrong remote name, no remote at all, or the command fails — **HALT IMMEDIATELY**: output a loud, explicit error stating the working directory does not appear to be the `philaindiacovers-admin` repo, and do not run any further step in this skill (no git log, no PROGRESS.md read, no reconciliation, nothing). Do not proceed on the assumption it's probably fine. This guard exists because a session can otherwise silently root itself in the wrong repo with no other error signal.
+
 1. Run `git fetch origin` FIRST, before checking any local branch or commit state. Local refs can be stale — a branch may have been merged or deleted via the GitHub web UI since the last check — and every step below depends on accurate remote state, not a cached local view.
 2. Run `git log --oneline -20`, `git branch -a`, and `git log --oneline main..origin/main` (or the equivalent for the current default branch) to see recent commits, any open branches, and whether local is behind origin.
 3. If the GitHub CLI (`gh`) is available, run `gh pr list --state merged --limit 20` and `gh pr list --state open` to see recently merged and currently-open PRs.
