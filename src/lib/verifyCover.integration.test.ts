@@ -72,6 +72,23 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
     return data.id as string;
   }
 
+  async function createFlaggedCover(suffix: string) {
+    const { data, error } = await admin
+      .from("covers")
+      .insert({
+        name_of_cover: `${runId} ${suffix}`,
+        verification_status: "flagged",
+        place_of_issue: "Original place of issue",
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new Error(`Failed to seed flagged cover: ${error?.message}`);
+    }
+    coverIds.push(data.id);
+    return data.id as string;
+  }
+
   beforeAll(async () => {
     users.admin = await createTestUser("admin");
     users.verifier = await createTestUser("verifier");
@@ -93,6 +110,30 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
     const { error } = await users.verifier.client.rpc("verify_cover", {
       p_cover_id: coverId,
       p_new_status: "flagged",
+    });
+    expect(error).not.toBeNull();
+
+    const { data: cover } = await admin
+      .from("covers")
+      .select("verification_status")
+      .eq("id", coverId)
+      .single();
+    expect(cover?.verification_status).toBe("draft");
+
+    const { data: logs } = await admin
+      .from("verification_audit_log")
+      .select("id")
+      .eq("cover_id", coverId);
+    expect(logs).toHaveLength(0);
+  });
+
+  it("Verifier flagging with an empty-string reason fails the same as null, and writes no audit row", async () => {
+    const coverId = await createDraftCover("flag-empty-string-reason");
+
+    const { error } = await users.verifier.client.rpc("verify_cover", {
+      p_cover_id: coverId,
+      p_new_status: "flagged",
+      p_reason: "",
     });
     expect(error).not.toBeNull();
 
@@ -199,5 +240,73 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
       p_new_status: "verified",
     });
     expect(error).not.toBeNull();
+  });
+
+  it("FR-24: Admin correcting a Flagged cover's metadata via a plain UPDATE resets it to draft, logged as correction_resubmitted", async () => {
+    const coverId = await createFlaggedCover("admin-correction");
+
+    const { data: updated, error } = await users.admin.client
+      .from("covers")
+      .update({ place_of_issue: "Corrected place of issue" })
+      .eq("id", coverId)
+      .select("verification_status, place_of_issue")
+      .single();
+    expect(error).toBeNull();
+    expect(updated?.place_of_issue).toBe("Corrected place of issue");
+    expect(updated?.verification_status).toBe("draft");
+
+    const { data: logs } = await admin
+      .from("verification_audit_log")
+      .select("action, performed_by")
+      .eq("cover_id", coverId);
+    expect(logs).toHaveLength(1);
+    expect(logs![0].action).toBe("correction_resubmitted");
+    expect(logs![0].performed_by).toBe(users.admin.userId);
+  });
+
+  it("FR-24: the trigger does not fire on a Verifier re-flagging an already-flagged cover via verify_cover()", async () => {
+    const coverId = await createFlaggedCover("verifier-reflag");
+
+    const { error } = await users.verifier.client.rpc("verify_cover", {
+      p_cover_id: coverId,
+      p_new_status: "flagged",
+      p_reason: "Updated reason after a second look",
+    });
+    expect(error).toBeNull();
+
+    const { data: cover } = await admin
+      .from("covers")
+      .select("verification_status")
+      .eq("id", coverId)
+      .single();
+    // Must still be 'flagged' — the correction-reset trigger only fires for
+    // the Admin role, so it must not undo verify_cover()'s own status write.
+    expect(cover?.verification_status).toBe("flagged");
+
+    const { data: logs } = await admin
+      .from("verification_audit_log")
+      .select("action")
+      .eq("cover_id", coverId);
+    expect(logs).toHaveLength(1);
+    expect(logs![0].action).toBe("flagged");
+  });
+
+  it("FR-24: correcting a Draft cover's metadata does not change its status", async () => {
+    const coverId = await createDraftCover("admin-correction-on-draft");
+
+    const { data: updated, error } = await users.admin.client
+      .from("covers")
+      .update({ place_of_issue: "Edited while still draft" })
+      .eq("id", coverId)
+      .select("verification_status")
+      .single();
+    expect(error).toBeNull();
+    expect(updated?.verification_status).toBe("draft");
+
+    const { data: logs } = await admin
+      .from("verification_audit_log")
+      .select("id")
+      .eq("cover_id", coverId);
+    expect(logs).toHaveLength(0);
   });
 });

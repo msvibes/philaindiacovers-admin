@@ -106,8 +106,14 @@ Seeded once with the 23 officially verified India Post circles (see Reference Da
 
 ### `verify_cover(p_cover_id uuid, p_new_status text, p_reason text default null)`
 - **Callable by:** Verifier role only
-- **Does:** validates `p_new_status` is `verified` or `flagged`; requires `p_reason` when flagging; updates the cover's `verification_status`/`verified_by`/`verified_at`; inserts a matching row into `verification_audit_log` — all atomically, in one transaction
-- **Satisfies:** FR-22, FR-23, FR-24, FR-25
+- **Does:** validates `p_new_status` is `verified` or `flagged`; requires `p_reason` when flagging (rejects both `NULL` and an empty/whitespace-only string); updates the cover's `verification_status`/`verified_by`/`verified_at`; inserts a matching row into `verification_audit_log` — all atomically, in one transaction
+- **Satisfies:** FR-22, FR-23, FR-25
+
+### `reset_flagged_to_draft_on_admin_correction()` — `BEFORE UPDATE` trigger on `covers`
+- **Fires for:** Admin role only, on a plain `UPDATE` (not `verify_cover()`, which Admin can't call) that leaves a `flagged` row `flagged`
+- **Does:** resets `verification_status` to `draft` and logs `action = 'correction_resubmitted'` to `verification_audit_log`, atomically with the triggering `UPDATE`
+- **Satisfies:** FR-24
+- **Corrected here (T-06, 2026-08-06):** FR-24 was originally tagged onto `verify_cover()` above, which is wrong — FR-24 governs the Admin's correction path, and Admin can never call `verify_cover()` (Verifier-only), so that function alone could never have satisfied it. This trigger is the actual enforcement.
 
 ### Bulk import (server-side, not a client-direct table insert)
 - **Callable by:** Admin role only
