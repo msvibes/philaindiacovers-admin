@@ -102,4 +102,25 @@ describe.skipIf(!hasCredentials)("cover-images Storage read policies (T-07)", ()
     expect(error).not.toBeNull();
     expect(data).toBeNull();
   });
+
+  it("Collector cannot download a flagged cover's image", async () => {
+    // Direct pairing with "Verifier can download a flagged cover's image"
+    // above — the draft case alone doesn't prove this; the Verifier policy
+    // is scoped to draft/flagged together, so Collector access needs
+    // checking against both, not inferred from one.
+    const path = await seedCoverWithImage("flagged", "collector-flagged-img");
+    const { data, error } = await users.collector.client.storage.from(BUCKET).download(path);
+    expect(error).not.toBeNull();
+    expect(data).toBeNull();
+  });
+
+  it("Collector cannot download a verified cover's image", async () => {
+    // Confirms Collector wasn't accidentally granted what only Admin has —
+    // no policy exists for Collector at any status, this is the direct
+    // check rather than an inference from the other two Collector cases.
+    const path = await seedCoverWithImage("verified", "collector-verified-img");
+    const { data, error } = await users.collector.client.storage.from(BUCKET).download(path);
+    expect(error).not.toBeNull();
+    expect(data).toBeNull();
+  });
 });
