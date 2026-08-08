@@ -98,6 +98,8 @@ Seeded once with the 23 officially verified India Post circles (see Reference Da
 | `verification_audit_log` | No access | SELECT (view trail) | No direct write (see below) |
 | `postal_circles` | Public read | Read | Read |
 
+**`postal_circles`'s "Public read" was documentation-only until T-07 (2026-08-08).** It predates the blanket `authenticated` default-privileges migration (like `covers`) but, unlike `covers`, never got its own explicit grant or an RLS policy — any authenticated query against it (a real one, not RLS-filtered to zero rows) failed outright with a grant-level "permission denied," found while building T-07's review-queue join. `20260808153633_postal_circles_public_read.sql` implements what this row already documented: `grant select ... to anon, authenticated` plus a `using (true)` policy.
+
 **Important technical nuance driving FR-25's "database-level enforcement" requirement:** Postgres RLS is *row-level*, not *column-level* — it can't natively say "Verifier can edit this one column but not others" on the same row. Direct table access alone can't cleanly enforce "Verifier changes status, never metadata." The fix: **Verifiers get no direct UPDATE grant on `covers` at all** — they can only call the `verify_cover()` function below, which runs with elevated privileges and does the one specific, controlled thing it's allowed to do. This is what actually satisfies FR-25 at the database level, not just a UI restriction.
 
 ---
