@@ -4,6 +4,16 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
+// Google's OAuth Client ID/Secret aren't configured in the Supabase
+// dashboard yet (a dashboard-side prerequisite, not something this code
+// can satisfy — see API-Integration-Contracts.md's Route Handler
+// authentication section and PROGRESS.md). Confirmed live: without it,
+// clicking through navigates the browser away to Supabase's own domain and
+// shows a raw {"error_code":"validation_failed",...} JSON response — not a
+// clean in-app error. Flip this to true once that dashboard setup is done;
+// the signInWithOAuth call below is otherwise already correct.
+const GOOGLE_SSO_ENABLED = false;
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -83,18 +93,28 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <div className="relative text-center text-sm text-gray-500">
-        <div className="absolute inset-x-0 top-1/2 border-t" />
-        <span className="relative z-10 bg-white px-2 dark:bg-black">or</span>
-      </div>
+      {GOOGLE_SSO_ENABLED && (
+        <>
+          <div className="relative text-center text-sm text-gray-500">
+            <div className="absolute inset-x-0 top-1/2 border-t" />
+            <span className="relative z-10 bg-white px-2 dark:bg-black">or</span>
+          </div>
 
-      <button
-        type="button"
-        onClick={handleGoogleSignIn}
-        className="w-full rounded border px-4 py-2"
-      >
-        Sign in with Google
-      </button>
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            className="w-full rounded border px-4 py-2"
+          >
+            Sign in with Google
+          </button>
+        </>
+      )}
+
+      {!GOOGLE_SSO_ENABLED && (
+        <p className="text-center text-xs text-gray-400">
+          Google sign-in isn&apos;t set up yet — use email/password for now.
+        </p>
+      )}
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
     </main>

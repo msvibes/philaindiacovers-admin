@@ -49,11 +49,27 @@ describe.skipIf(!hasCredentials)("email/password login (T-06.5)", () => {
     expect(data.user?.id).toBe(userId);
   });
 
-  it("fails with the wrong password, producing no session", async () => {
+  it("fails with a real provisioned email and the wrong password, producing no session", async () => {
     const client = createClient(supabaseUrl!, anonKey!, { auth: { persistSession: false } });
     const { data, error } = await client.auth.signInWithPassword({
       email,
       password: "definitely-the-wrong-password",
+    });
+
+    expect(error).not.toBeNull();
+    expect(data.session).toBeNull();
+  });
+
+  it("fails with an email that was never provisioned, producing no session", async () => {
+    // A meaningfully different case from the wrong-password test above,
+    // even though Supabase's response is the same generic "Invalid login
+    // credentials" either way (deliberately — it doesn't reveal whether an
+    // email exists). This is a non-existent account, not a real one with a
+    // typo'd password.
+    const client = createClient(supabaseUrl!, anonKey!, { auth: { persistSession: false } });
+    const { data, error } = await client.auth.signInWithPassword({
+      email: `${runId}-never-provisioned@example.test`,
+      password,
     });
 
     expect(error).not.toBeNull();
