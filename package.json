@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "check:secrets": "node scripts/check-no-secret-leak.mjs"
+    "check:secrets": "node scripts/check-no-secret-leak.mjs",
+    "provision:user": "node --env-file=.env.local scripts/provision-user.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

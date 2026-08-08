@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdminClient";
+import { requireRole } from "@/lib/requireRole";
 import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 import { extractGiRegistrationNumber } from "@/lib/extractGiRegistrationNumber";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
@@ -8,9 +9,10 @@ import { normalizePostalCircleName } from "@/lib/normalizePostalCircle";
 import { isDuplicateCover, type ExistingCoverKey } from "@/lib/isDuplicateCover";
 import type { CoverRow } from "@/lib/coverImportRow";
 
-// SECURITY GAP (tracked in PROGRESS.md, not yet fixed): like
-// /api/check-duplicate-covers, this route has no access control — no auth
-// exists anywhere in either app yet. Same owner: T-06.5.
+// Access-control gap open since T-05 (the more serious of the two — this
+// route writes covers rows and uploads to Storage, not just reads), closed
+// by T-06.5: every request now needs a verified Admin session (see
+// requireRole.ts) — a real server-side check, not a client-supplied claim.
 //
 // T-02's client-side checks (missing image, duplicate) are convenience
 // only, not a security boundary — every check that matters is re-run here
@@ -30,6 +32,9 @@ type RowResult = {
 };
 
 export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, "admin");
+  if (auth instanceof NextResponse) return auth;
+
   const formData = await request.formData();
 
   const rowsRaw = formData.get("rows");

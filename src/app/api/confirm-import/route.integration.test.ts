@@ -1,6 +1,8 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { POST } from "./route";
+import { createTestUser, deleteTestUser, type TestUser } from "@/lib/testHelpers/createTestUser";
 
 // Integration tier (see docs/Test-Strategy.md): talks to the real Supabase
 // dev project via the same service-role client the route itself uses.
@@ -34,10 +36,25 @@ describe.skipIf(!hasCredentials)("POST /api/confirm-import (T-05)", () => {
   // Lazily imported so the module (and its env-var guard) only loads once
   // credentials are confirmed present.
   let supabaseAdmin: typeof import("@/lib/supabaseAdminClient").supabaseAdmin;
+  let users: Record<"admin" | "verifier" | "collector", TestUser>;
 
   beforeAll(async () => {
     ({ supabaseAdmin } = await import("@/lib/supabaseAdminClient"));
-  });
+    const adminClient = createClient(supabaseUrl!, serviceRoleKey!, {
+      auth: { persistSession: false },
+    });
+    users = {
+      admin: await createTestUser(adminClient, supabaseUrl!, anonKey!, runId, "admin"),
+      verifier: await createTestUser(adminClient, supabaseUrl!, anonKey!, runId, "verifier"),
+      collector: await createTestUser(adminClient, supabaseUrl!, anonKey!, runId, "collector"),
+    };
+  }, 30_000);
+
+  afterAll(async () => {
+    for (const { userId } of Object.values(users)) {
+      await deleteTestUser(supabaseAdmin, userId);
+    }
+  }, 30_000);
 
   afterEach(async () => {
     if (createdCoverIds.length > 0) {
@@ -50,12 +67,19 @@ describe.skipIf(!hasCredentials)("POST /api/confirm-import (T-05)", () => {
     }
   });
 
-  function buildRequest(rows: { rowNumber: number; data: Record<string, string> }[], files: File[]) {
+  // Defaults to a real Admin session's token (T-06.5's requireRole() gate).
+  // Tests exercising the auth gate itself pass a different token explicitly.
+  function buildRequest(
+    rows: { rowNumber: number; data: Record<string, string> }[],
+    files: File[],
+    token: string | null = users?.admin?.accessToken ?? null
+  ) {
     const formData = new FormData();
     formData.append("rows", JSON.stringify(rows));
     for (const file of files) formData.append("images", file);
     return new NextRequest("http://localhost/api/confirm-import", {
       method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       body: formData,
     });
   }
@@ -228,5 +252,63 @@ describe.skipIf(!hasCredentials)("POST /api/confirm-import (T-05)", () => {
       .eq("id", body.results[0].coverId)
       .single();
     expect(cover?.postal_circle_id).toBeNull();
+  });
+
+  it("T-06.5: rejects a request with no bearer token, creating nothing", async () => {
+    const row = {
+      rowNumber: 1,
+      data: {
+        "Image File Name": "test4.jpg",
+        "Name of the Cover": "Test Cover",
+        "Name of the GI Tag / Item": `${runId} No Token Item`,
+        "Product Category": "",
+        "Description of Cancellation": "x",
+        "Description of Cachet": "x",
+        "Overall Description": "x",
+        "Issuing Postal Circle": "Kerala",
+        "Place of Issue": "Kochi",
+        "Date of Issue": "2021-06-15",
+      },
+    };
+    const file = new File(["d"], "test4.jpg", { type: "image/jpeg" });
+
+    const res = await POST(buildRequest([row], [file], null));
+    expect(res.status).toBe(401);
+
+    const { data: cover } = await supabaseAdmin
+      .from("covers")
+      .select("id")
+      .eq("gi_item_name", `${runId} No Token Item`)
+      .maybeSingle();
+    expect(cover).toBeNull();
+  });
+
+  it("T-06.5: rejects a Verifier session — Admin-only, even though they're authenticated", async () => {
+    const row = {
+      rowNumber: 1,
+      data: {
+        "Image File Name": "test5.jpg",
+        "Name of the Cover": "Test Cover",
+        "Name of the GI Tag / Item": `${runId} Verifier Forbidden Item`,
+        "Product Category": "",
+        "Description of Cancellation": "x",
+        "Description of Cachet": "x",
+        "Overall Description": "x",
+        "Issuing Postal Circle": "Kerala",
+        "Place of Issue": "Kochi",
+        "Date of Issue": "2021-06-15",
+      },
+    };
+    const file = new File(["e"], "test5.jpg", { type: "image/jpeg" });
+
+    const res = await POST(buildRequest([row], [file], users.verifier.accessToken));
+    expect(res.status).toBe(403);
+
+    const { data: cover } = await supabaseAdmin
+      .from("covers")
+      .select("id")
+      .eq("gi_item_name", `${runId} Verifier Forbidden Item`)
+      .maybeSingle();
+    expect(cover).toBeNull();
   });
 });
