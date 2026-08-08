@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Papa from "papaparse";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 import { fetchExistingCoverKeys } from "@/lib/checkDuplicateCovers";
 import { authorizedFetch } from "@/lib/authorizedFetch";
@@ -27,6 +29,8 @@ type ConfirmRowResult = {
 };
 
 export default function BulkImportPage() {
+  const router = useRouter();
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
@@ -35,6 +39,22 @@ export default function BulkImportPage() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmResults, setConfirmResults] = useState<ConfirmRowResult[] | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (cancelled) return;
+      if (!data.session) {
+        router.push("/login");
+        return;
+      }
+      setSessionChecked(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const handlePreview = () => {
     setParseError(null);
@@ -148,6 +168,14 @@ export default function BulkImportPage() {
 
   const createdCount = confirmResults?.filter((r) => r.status === "created").length ?? 0;
   const failedCount = confirmResults?.filter((r) => r.status === "failed").length ?? 0;
+
+  if (!sessionChecked) {
+    return (
+      <main className="mx-auto max-w-5xl p-8">
+        <p className="text-sm text-gray-500">Loading…</p>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-5xl p-8 space-y-6">
