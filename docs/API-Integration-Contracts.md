@@ -121,6 +121,10 @@ Seeded once with the 23 officially verified India Post circles (see Reference Da
 - **Does:** accepts the spreadsheet + image files; validates every referenced image filename exists before creating anything; checks each row's GI Item + Date of Issue against existing `covers` rows (any status) and flags likely duplicates; creates `draft` entries only for rows that pass; returns a per-row success/failure report for the import-preview screen
 - **Satisfies:** FR-17, FR-20
 - **Implemented as (T-05, 2026-08-05):** a Next.js Route Handler (`POST /api/confirm-import`, Admin repo), not a Supabase Edge Function as this section originally said — corrected here directly rather than left as a task-level exception. Uses the service-role key server-side, same pattern as `/api/check-duplicate-covers` (T-03), to reuse existing tooling rather than introduce a second (Deno) runtime. This is an implementation-detail correction, not a change to any of the three items under "Status: LOCKED" below.
+- **Auth (T-06.5, 2026-08-08):** requires a verified Admin session, same convention as `/api/check-duplicate-covers` below.
+
+### Route Handler authentication convention (T-06.5, ADR-008)
+Both `/api/check-duplicate-covers` and `/api/confirm-import` are called from client-side code via `fetch`, not rendered server-side, so they authenticate via a **bearer token**, not a cookie session: the browser attaches `Authorization: Bearer <access_token>` (`src/lib/authorizedFetch.ts`, sourced from the logged-in user's Supabase session), and the route verifies it with `requireRole(request, "admin")` (`src/lib/requireRole.ts`) — `supabase.auth.getUser(token)` round-trips to Supabase Auth to validate the token server-side, then the caller's role is looked up via the service-role client. A missing/invalid token gets `401`; a valid session with the wrong role gets `403`. See ADR-008 for why this was chosen over cookie-based `@supabase/ssr`.
 
 ### Collector stats (view or lightweight function)
 - **Does:** computes completeness % (owned ÷ total Verified), the "not yet in my Collection" list, and Purchased-only spend total with a separate non-Purchased count

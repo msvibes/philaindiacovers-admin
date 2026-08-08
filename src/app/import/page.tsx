@@ -4,6 +4,7 @@ import { useState } from "react";
 import Papa from "papaparse";
 import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 import { fetchExistingCoverKeys } from "@/lib/checkDuplicateCovers";
+import { authorizedFetch } from "@/lib/authorizedFetch";
 import { isDuplicateCover } from "@/lib/isDuplicateCover";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { CSV_COLUMNS, type CoverRow } from "@/lib/coverImportRow";
@@ -126,7 +127,7 @@ export default function BulkImportPage() {
     }
 
     try {
-      const res = await fetch("/api/confirm-import", { method: "POST", body: formData });
+      const res = await authorizedFetch("/api/confirm-import", { method: "POST", body: formData });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(body.error ?? `Confirm import failed (${res.status})`);
