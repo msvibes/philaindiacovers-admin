@@ -4,11 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import { fetchReviewQueue, type ReviewQueueCover } from "@/lib/reviewQueue";
+import { fetchCurrentRole, type ProfileRole } from "@/lib/currentRole";
 
 const BUCKET = "cover-images";
 
+// Viewable by both Admin and Verifier — Admin's own RLS already grants full
+// read access to this same data, and a read-only view of the queue is
+// genuinely useful for a two-person back-office, not a risk. Only the
+// Verifier role gets working action buttons (see the render below).
 export default function ReviewQueuePage() {
   const router = useRouter();
+  const [role, setRole] = useState<ProfileRole | null>(null);
   const [queue, setQueue] = useState<ReviewQueueCover[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -37,6 +43,9 @@ export default function ReviewQueuePage() {
         router.push("/login");
         return;
       }
+      const r = await fetchCurrentRole(supabaseBrowser);
+      if (cancelled) return;
+      setRole(r);
       await loadQueue();
     })();
     return () => {
@@ -97,7 +106,13 @@ export default function ReviewQueuePage() {
     setIsActing(false);
 
     if (error) {
-      setActionError(error.message);
+      // Defense-in-depth path only — the action buttons are hidden for
+      // anyone but the Verifier role (see the render below), so this
+      // should never actually fire from the UI. If it somehow does (e.g.
+      // a stale role value, or the RPC called directly), show a clear
+      // message rather than verify_cover()'s raw Postgres exception text.
+      const isRoleRejection = /verifier role may call verify_cover/i.test(error.message);
+      setActionError(isRoleRejection ? "You don't have permission to do this." : error.message);
       return;
     }
 
@@ -207,40 +222,55 @@ export default function ReviewQueuePage() {
               <dd>{selected.verification_status}</dd>
             </dl>
 
-            <div className="space-y-3 border-t pt-4">
-              <button
-                type="button"
-                onClick={() => handleAction("verified")}
-                disabled={isActing}
-                className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
-              >
-                Verify
-              </button>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium" htmlFor="flag-reason">
-                  Flag with reason
-                </label>
-                <textarea
-                  id="flag-reason"
-                  value={flagReason}
-                  onChange={(e) => setFlagReason(e.target.value)}
-                  className="w-full rounded border px-3 py-2 text-sm"
-                  rows={3}
-                  placeholder="Required — explain what needs correction"
-                />
+            {role === "verifier" ? (
+              <div className="space-y-3 border-t pt-4">
                 <button
                   type="button"
-                  onClick={() => handleAction("flagged")}
-                  disabled={isActing || flagReason.trim() === ""}
-                  className="rounded bg-amber-700 px-4 py-2 text-white disabled:opacity-50"
+                  onClick={() => handleAction("verified")}
+                  disabled={isActing}
+                  className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
                 >
-                  Flag
+                  Verify
                 </button>
-              </div>
 
-              {actionError && <p className="text-red-600 text-sm">{actionError}</p>}
-            </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium" htmlFor="flag-reason">
+                    Flag with reason
+                  </label>
+                  <textarea
+                    id="flag-reason"
+                    value={flagReason}
+                    onChange={(e) => setFlagReason(e.target.value)}
+                    className="w-full rounded border px-3 py-2 text-sm"
+                    rows={3}
+                    placeholder="Required — explain what needs correction"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAction("flagged")}
+                    disabled={isActing || flagReason.trim() === ""}
+                    className="rounded bg-amber-700 px-4 py-2 text-white disabled:opacity-50"
+                  >
+                    Flag
+                  </button>
+                </div>
+
+                {actionError && <p className="text-red-600 text-sm">{actionError}</p>}
+              </div>
+            ) : (
+              // No Verify/Flag controls at all for a non-Verifier viewer —
+              // not just hidden-until-clicked, since a button that exists
+              // only to 403 is the same class of bug the /login redirect
+              // fix was meant to close. Admin can still see everything
+              // above (their own RLS already grants that read), just not
+              // act on it from here.
+              <div className="border-t pt-4">
+                <p className="text-sm text-gray-500">
+                  Viewing as {role ?? "a role"} — only the Verifier role can Verify or Flag
+                  entries.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

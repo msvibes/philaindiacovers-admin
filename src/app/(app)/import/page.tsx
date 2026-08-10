@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
+import { fetchCurrentRole } from "@/lib/currentRole";
 import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 import { fetchExistingCoverKeys } from "@/lib/checkDuplicateCovers";
 import { authorizedFetch } from "@/lib/authorizedFetch";
@@ -47,6 +48,17 @@ export default function BulkImportPage() {
       if (cancelled) return;
       if (!data.session) {
         router.push("/login");
+        return;
+      }
+
+      // Admin-only — a Verifier landing here (bookmark, back button,
+      // anything) is sent to /review, their own screen. This mirrors
+      // /review's own role check (T-06.5.1) rather than trusting the
+      // /login redirect alone to keep everyone on the right page.
+      const role = await fetchCurrentRole(supabaseBrowser);
+      if (cancelled) return;
+      if (role !== "admin") {
+        router.push("/review");
         return;
       }
       setSessionChecked(true);
