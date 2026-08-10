@@ -1,0 +1,19 @@
+-- current_profile_role() has been callable via RPC by an authenticated
+-- client since T-04, but only because Postgres grants EXECUTE on new
+-- functions to PUBLIC by default and nothing ever revoked it — the same
+-- category of fragile-default issue this project has caught and fixed
+-- before: the missing service_role grants (T-03,
+-- 20260802160741_grant_service_role_default_privileges.sql) and the
+-- leftover TRUNCATE/REFERENCES/TRIGGER/MAINTAIN privileges on anon/
+-- authenticated (T-04, 20260804180223_revoke_rls_bypassing_privileges.sql,
+-- 20260804180432_revoke_maintain_privilege.sql). Found this time while
+-- building the role-based login routing fix, which made this function's
+-- callability from the browser load-bearing for the first time (previously
+-- only used inside RLS policies and SECURITY DEFINER functions, never
+-- called directly by a client).
+--
+-- verify_cover() already gets its own explicit grant
+-- (20260806195850_create_verify_cover_function.sql) for the same reason —
+-- this brings current_profile_role() in line with that same deliberate,
+-- documented pattern instead of relying on an unrevoked default.
+grant execute on function current_profile_role() to authenticated;
