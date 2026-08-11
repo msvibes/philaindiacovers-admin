@@ -15,6 +15,7 @@ const BUCKET = "cover-images";
 export default function ReviewQueuePage() {
   const router = useRouter();
   const [role, setRole] = useState<ProfileRole | null>(null);
+  const [roleChecked, setRoleChecked] = useState(false);
   const [queue, setQueue] = useState<ReviewQueueCover[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -46,7 +47,13 @@ export default function ReviewQueuePage() {
       const r = await fetchCurrentRole(supabaseBrowser);
       if (cancelled) return;
       setRole(r);
-      await loadQueue();
+      setRoleChecked(true);
+      // Any role outside admin/verifier doesn't belong on this screen at
+      // all (see the no-access render below) — don't bother loading the
+      // queue for them, even though RLS would just return zero rows.
+      if (r === "admin" || r === "verifier") {
+        await loadQueue();
+      }
     })();
     return () => {
       cancelled = true;
@@ -129,7 +136,24 @@ export default function ReviewQueuePage() {
     );
   }
 
-  if (!queue) {
+  // Explicit "you don't belong here" state for any role outside
+  // admin/verifier — including a genuinely role-less account (no profiles
+  // row at all, e.g. a brand-new signup before handle_new_user() ran for
+  // it) — rather than silently reusing Admin's read-only view the way it
+  // did before. Defense in depth: the signup trigger means this shouldn't
+  // normally happen anymore, but this doesn't rely on that alone.
+  if (roleChecked && role !== "admin" && role !== "verifier") {
+    return (
+      <main className="mx-auto max-w-md p-8">
+        <h1 className="text-xl font-semibold">No access</h1>
+        <p className="mt-2 text-sm text-gray-500">
+          Your account doesn&apos;t have access to this area yet — contact the admin.
+        </p>
+      </main>
+    );
+  }
+
+  if (!roleChecked || !queue) {
     return (
       <main className="mx-auto max-w-3xl p-8">
         <p className="text-sm text-gray-500">Loading…</p>

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
+import { createTestUser, deleteTestUser, type TestUser } from "@/lib/testHelpers/createTestUser";
 
 // Integration tier (see docs/Test-Strategy.md): talks to the real Supabase
 // dev project, not a mock. T-06's fit criterion — calling verify_cover()
@@ -24,40 +25,8 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
     auth: { persistSession: false },
   });
 
-  type TestUser = { userId: string; client: SupabaseClient };
   const users: Record<"admin" | "verifier" | "collector", TestUser> = {} as never;
   const coverIds: string[] = [];
-
-  async function createTestUser(role: "admin" | "verifier" | "collector") {
-    const email = `${runId}-${role}@example.test`;
-    const password = "test-password-not-real-1234";
-
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-    if (createErr || !created.user) {
-      throw new Error(`Failed to create test ${role} user: ${createErr?.message}`);
-    }
-
-    const { error: profileErr } = await admin
-      .from("profiles")
-      .insert({ id: created.user.id, role });
-    if (profileErr) {
-      throw new Error(`Failed to set profiles.role for test ${role} user: ${profileErr.message}`);
-    }
-
-    const client = createClient(supabaseUrl!, anonKey!, {
-      auth: { persistSession: false },
-    });
-    const { error: signInErr } = await client.auth.signInWithPassword({ email, password });
-    if (signInErr) {
-      throw new Error(`Failed to sign in as test ${role} user: ${signInErr.message}`);
-    }
-
-    return { userId: created.user.id, client };
-  }
 
   async function createDraftCover(suffix: string) {
     const { data, error } = await admin
@@ -107,17 +76,16 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
   }
 
   beforeAll(async () => {
-    users.admin = await createTestUser("admin");
-    users.verifier = await createTestUser("verifier");
-    users.collector = await createTestUser("collector");
+    users.admin = await createTestUser(admin, supabaseUrl!, anonKey!, runId, "admin");
+    users.verifier = await createTestUser(admin, supabaseUrl!, anonKey!, runId, "verifier");
+    users.collector = await createTestUser(admin, supabaseUrl!, anonKey!, runId, "collector");
   }, 30_000);
 
   afterAll(async () => {
     await admin.from("verification_audit_log").delete().in("cover_id", coverIds);
     await admin.from("covers").delete().in("id", coverIds);
     for (const { userId } of Object.values(users)) {
-      await admin.from("profiles").delete().eq("id", userId);
-      await admin.auth.admin.deleteUser(userId);
+      await deleteTestUser(admin, userId);
     }
   }, 30_000);
 
@@ -257,6 +225,59 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
       p_new_status: "verified",
     });
     expect(error).not.toBeNull();
+  });
+
+  it("a caller with no profiles row at all is rejected by the role check itself, not saved by an incidental FK violation", async () => {
+    // Regression test for a real bug: current_profile_role() returns NULL
+    // for a caller with no profiles row (e.g. a brand-new self-service
+    // signup, before handle_new_user() existed). The original guard used
+    // `<>`, and `NULL <> 'verifier'` is NULL — PL/pgSQL treats a NULL IF
+    // condition as false, so the exception never fired. The call still
+    // failed today, but only because covers_verified_by_fkey rejected
+    // setting verified_by to an id with no matching profiles row — an
+    // accidental backstop, not the intended one, and one that would
+    // silently stop protecting anything if the schema ever changed. Fixed
+    // with `IS DISTINCT FROM`, which correctly treats NULL as "not
+    // verifier". This proves the *guard* rejects it — via the exact
+    // "Only the Verifier role" message, not a foreign-key error — by
+    // deliberately deleting the profiles row handle_new_user() would
+    // otherwise auto-create, isolating the guard from that other fix.
+    const email = `${runId}-no-profile@example.test`;
+    const password = "test-password-not-real-1234";
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (createErr || !created.user) {
+      throw new Error(`Failed to create no-profile test user: ${createErr?.message}`);
+    }
+    await admin.from("profiles").delete().eq("id", created.user.id);
+
+    const orphanClient = createClient(supabaseUrl!, anonKey!, { auth: { persistSession: false } });
+    await orphanClient.auth.signInWithPassword({ email, password });
+
+    const { data: roleCheck } = await orphanClient.rpc("current_profile_role");
+    expect(roleCheck).toBeNull();
+
+    const coverId = await createDraftCover("no-profile-forbidden");
+    const { error } = await orphanClient.rpc("verify_cover", {
+      p_cover_id: coverId,
+      p_new_status: "verified",
+    });
+
+    expect(error).not.toBeNull();
+    expect(error?.message).toBe("Only the Verifier role may call verify_cover()");
+    expect(error?.message).not.toMatch(/foreign key|fkey/i);
+
+    const { data: cover } = await admin
+      .from("covers")
+      .select("verification_status")
+      .eq("id", coverId)
+      .single();
+    expect(cover?.verification_status).toBe("draft");
+
+    await admin.auth.admin.deleteUser(created.user.id);
   });
 
   it("FR-24: Admin correcting a Flagged cover's metadata via a plain UPDATE resets it to draft, logged as correction_resubmitted", async () => {

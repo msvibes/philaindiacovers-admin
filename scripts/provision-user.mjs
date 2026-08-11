@@ -110,11 +110,13 @@ if (createError || !created.user) {
   process.exit(1);
 }
 
-// No trigger auto-creates a profiles row on signup (deliberately — see
-// requireRole.ts / Threat-Model.md), so it's inserted explicitly here.
+// A trigger (handle_new_user(), 20260811182123_auto_create_profile_on_signup.sql)
+// already auto-created a profiles row with role='collector' the moment
+// createUser() ran — this upserts it to the actually-requested role
+// rather than inserting, which would now hit a duplicate-key conflict.
 const { error: profileError } = await admin
   .from("profiles")
-  .insert({ id: created.user.id, role });
+  .upsert({ id: created.user.id, role }, { onConflict: "id" });
 
 if (profileError) {
   console.error(
