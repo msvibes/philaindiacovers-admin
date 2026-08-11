@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
+import { createTestUser, deleteTestUser, type TestUser } from "@/lib/testHelpers/createTestUser";
 
 // Integration tier (see docs/Test-Strategy.md): talks to the real Supabase
 // dev project, not a mock. This is T-04's literal fit criterion — "a
@@ -24,45 +25,13 @@ describe.skipIf(!hasCredentials)("covers RLS policies (T-04)", () => {
     auth: { persistSession: false },
   });
 
-  type TestUser = { userId: string; client: SupabaseClient };
   const users: Record<"admin" | "verifier" | "collector", TestUser> = {} as never;
   const coverIds: Record<"draft" | "flagged" | "verified", string> = {} as never;
 
-  async function createTestUser(role: "admin" | "verifier" | "collector") {
-    const email = `${runId}-${role}@example.test`;
-    const password = "test-password-not-real-1234";
-
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-    if (createErr || !created.user) {
-      throw new Error(`Failed to create test ${role} user: ${createErr?.message}`);
-    }
-
-    const { error: profileErr } = await admin
-      .from("profiles")
-      .insert({ id: created.user.id, role });
-    if (profileErr) {
-      throw new Error(`Failed to set profiles.role for test ${role} user: ${profileErr.message}`);
-    }
-
-    const client = createClient(supabaseUrl!, anonKey!, {
-      auth: { persistSession: false },
-    });
-    const { error: signInErr } = await client.auth.signInWithPassword({ email, password });
-    if (signInErr) {
-      throw new Error(`Failed to sign in as test ${role} user: ${signInErr.message}`);
-    }
-
-    return { userId: created.user.id, client };
-  }
-
   beforeAll(async () => {
-    users.admin = await createTestUser("admin");
-    users.verifier = await createTestUser("verifier");
-    users.collector = await createTestUser("collector");
+    users.admin = await createTestUser(admin, supabaseUrl!, anonKey!, runId, "admin");
+    users.verifier = await createTestUser(admin, supabaseUrl!, anonKey!, runId, "verifier");
+    users.collector = await createTestUser(admin, supabaseUrl!, anonKey!, runId, "collector");
 
     const { data: covers, error: coversErr } = await admin
       .from("covers")
@@ -83,8 +52,7 @@ describe.skipIf(!hasCredentials)("covers RLS policies (T-04)", () => {
   afterAll(async () => {
     await admin.from("covers").delete().in("id", Object.values(coverIds));
     for (const { userId } of Object.values(users)) {
-      await admin.from("profiles").delete().eq("id", userId);
-      await admin.auth.admin.deleteUser(userId);
+      await deleteTestUser(admin, userId);
     }
   }, 30_000);
 

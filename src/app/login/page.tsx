@@ -5,15 +5,13 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import { fetchCurrentRole } from "@/lib/currentRole";
 
-// Google's OAuth Client ID/Secret aren't configured in the Supabase
-// dashboard yet (a dashboard-side prerequisite, not something this code
-// can satisfy — see API-Integration-Contracts.md's Route Handler
-// authentication section and PROGRESS.md). Confirmed live: without it,
-// clicking through navigates the browser away to Supabase's own domain and
-// shows a raw {"error_code":"validation_failed",...} JSON response — not a
-// clean in-app error. Flip this to true once that dashboard setup is done;
-// the signInWithOAuth call below is otherwise already correct.
-const GOOGLE_SSO_ENABLED = false;
+// Google's OAuth Client ID/Secret + Manual Linking are now configured in
+// the Supabase dashboard (2026-08-11) — was confirmed genuinely broken
+// without this (see API-Integration-Contracts.md's Route Handler
+// authentication section and PROGRESS.md for the prior live-tested
+// failure mode). The Verifier-via-Google redirect path is still an
+// explicit open item (PROGRESS.md) — not yet exercised end-to-end.
+const GOOGLE_SSO_ENABLED = true;
 
 export default function LoginPage() {
   const router = useRouter();

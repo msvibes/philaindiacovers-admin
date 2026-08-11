@@ -28,9 +28,13 @@ export async function createTestUser(
     throw new Error(`Failed to create test ${role} user: ${createErr?.message}`);
   }
 
+  // handle_new_user() (20260811182123_auto_create_profile_on_signup.sql)
+  // already auto-created a profiles row with role='collector' the moment
+  // createUser() ran — upsert to the actually-requested role rather than
+  // insert, which would now hit a duplicate-key conflict.
   const { error: profileErr } = await admin
     .from("profiles")
-    .insert({ id: created.user.id, role });
+    .upsert({ id: created.user.id, role }, { onConflict: "id" });
   if (profileErr) {
     throw new Error(`Failed to set profiles.role for test ${role} user: ${profileErr.message}`);
   }
