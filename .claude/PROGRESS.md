@@ -1,10 +1,20 @@
 # Progress Snapshot — philaindiacovers-admin
 
-**Last updated:** 2026-08-10
-**Last session worked on:** Role-based login routing — fixing a real bug found via the user's own manual testing (Verifier landing on the Admin's `/import` screen), plus two preventive CLAUDE.md/Implementation-Brief rules added to stop this class of bug recurring
+**Last updated:** 2026-08-11
+**Last session worked on:** Enabling Google SSO for real (dashboard side now configured) + extending `provision-user.mjs` to update an existing user's role, not just create new ones
 
 ## Current state
-`main` is at `8618f3f`. T-06.5, T-07, the logout+`/import`-guard work, and the role-based-routing fix (below) are all merged (PRs #7/#8/#9/#10, branches auto-deleted).
+`main` is at `8618f3f`. Seven Walking Skeleton tasks plus T-06.5/logout/routing-fix all merged (PRs #7–#10, branches auto-deleted). This session's changes are built, tested, and verified live, on branch `us-34-enable-google-sso` (not yet merged — PR to be opened via GitHub web UI, `gh` still not installed).
+
+- **`GOOGLE_SSO_ENABLED` flipped to `true`** (`src/app/login/page.tsx`) — the user configured Google's OAuth Client ID/Secret and confirmed "Manual Linking" is on in the Supabase dashboard. Confirmed live: the "Sign in with Google" button now actually renders on `/login`. The Verifier-via-Google → `/review` redirect is still an explicit open item (not yet exercised with a real Google sign-in) — see `docs/Threat-Model.md`/prior session notes; flipping the flag doesn't retroactively prove that path.
+
+- **`scripts/provision-user.mjs` extended to update an existing user's role, not just create new accounts** — needed because a Google sign-in with a brand-new email creates a real `auth.users` row with `profiles.role` defaulting to `collector`, and there was no way to promote that account to `admin`/`verifier` afterward without hand-editing the database. Now: looks up the email first (`listUsers()` + find, since there's no dedicated get-by-email in the admin API and this is a small enough user base that one page is always enough); if found, `--password` is no longer required and the script just upserts `profiles.role` for that existing user; if not found, falls back to the original create-a-new-account behavior (still requires `--password` there, since an account has to actually exist to give it a password). Upsert (not update) on the existing-user path defensively covers the case where a `profiles` row is somehow missing, not just present-with-wrong-role.
+
+  **Verified live, using a throwaway account, not either of the two real ones**: created a test Verifier via the script (regression-checked the create path still works), logged in via the browser and confirmed `/import` redirected to `/review` as expected. Then, **without logging out**, ran the script again on the same email with `--role=admin` and no password — confirmed it updated (not recreated) the account. **Answers the "does a role change need a fresh login" question precisely, per a direct request**: a plain page refresh was enough — reloaded `/review` (same session, same tab, no logout/login anywhere in between) and it immediately showed "Viewing as admin," then navigating to `/import` loaded it directly. This is expected from how the code works (`fetchCurrentRole()` queries `current_profile_role()` fresh via RPC on every guarded page's mount — role is never cached client-side or baked into the JWT), but was confirmed empirically rather than left as a reasoned-through assumption. Throwaway account cleaned up afterward.
+
+  77/77 tests passing (unchanged — no new test file; `scripts/` isn't covered by the Vitest suite, verified via the live script runs above instead, consistent with how `provision-user.mjs`'s original create path was verified in T-06.5), `next build` and `npm run lint` both clean.
+
+**Next, together with the user, not yet done**: sign in with Google using a brand-new email (`krutimlogic@gmail.com`, distinct from the existing `krutimlogic+admin@gmail.com` test account) to observe the real, previously-untested `collector`-role-hits-login-redirect combination live.
 
 - **Bug: `/login` always redirected to `/import` regardless of role — a Verifier logging in normally landed on the Admin's screen.** Found via the user's own manual testing, not part of any open task. Root cause, confirmed precisely rather than assumed: (1) `handlePasswordSignIn` hard-coded `router.push("/import")` after any successful sign-in, no role lookup at all; (2) `/import`'s session guard (added for the logout work) checked only that a session existed, not the role, so a Verifier passed straight through and the full Bulk Import UI rendered for them.
 
@@ -114,7 +124,7 @@ Five earlier Walking Skeleton tasks done and merged:
 **Jira status (confirmed 2026-08-06):** US-35 Done, US-36 Done, all other 40 stories To Do.
 
 ## In progress
-Nothing. The role-based routing fix is done — merged via PR #10, `main` at `8618f3f`. Local branch `us-39-role-based-routing` deleted after confirming the merge (fetch-first caught it before this was assumed). The App repo's `CLAUDE.md` companion change was already committed directly to its `main` (see "Current state" above for the reasoning).
+**Google SSO enablement + the `provision-user.mjs` role-update extension are code-complete and verified live** (77/77 tests passing, `next build` and `npm run lint` clean) but **not yet merged** — still on branch `us-34-enable-google-sso`, no PR opened yet. The actual Google sign-in with `krutimlogic@gmail.com` (the real point of this work — observing the untested collector-role-hits-login-redirect combination) hasn't happened yet; that's the immediate next step, done together with the user watching live, not something to do solo.
 
 ## Next up
 One real prerequisite still carried over from T-06.5:
