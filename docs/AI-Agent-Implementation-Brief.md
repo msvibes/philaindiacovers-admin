@@ -127,6 +127,8 @@ Breaking all 42 stories into full task-level detail now — before any code exis
   - New paid dependencies or services without first checking cost — this project has a demonstrated pattern of catching real costs late (Supabase region capacity, Apple Developer Program fee); don't repeat that pattern from the code side.
   - Schema changes without updating the type-generation step in both repos (see §10.1's shared-dependency note).
   - Any UI-only permission check standing in for real RLS enforcement — every role boundary in this PRD (FR-25 especially) is meant to be enforced at the database level.
+  - Unlabeled "temporary" shortcuts (e.g., a hard-coded redirect/destination because only one currently exists) — must carry an explicit, logged trigger condition for when to revisit, in both a code comment and the task's PROGRESS.md entry, not just an implicit "fix later." A real bug shipped this way in the admin repo: `/login`'s redirect was hard-coded to `/import` with nothing flagging that it needed revisiting once a second, role-specific page (`/review`) existed.
+  - A new role-differentiated page/route without live-verifying every existing role through the real shared entry point (not just the new page's own intended user) — this is how a Verifier ended up landing on the Admin's `/import` screen after `/review` shipped, caught only in later manual testing rather than at that task's own review.
 - **Permissions/sandbox:** confirm Claude Code's write access is scoped to the two project repos only, with Supabase service-role credentials kept out of any client-side code path entirely.
 
 ### CI/CD (Session 7)

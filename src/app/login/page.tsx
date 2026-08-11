@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
+import { fetchCurrentRole } from "@/lib/currentRole";
 
 // Google's OAuth Client ID/Secret aren't configured in the Supabase
 // dashboard yet (a dashboard-side prerequisite, not something this code
@@ -27,17 +28,44 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     const { error } = await supabaseBrowser.auth.signInWithPassword({ email, password });
-
-    setIsSubmitting(false);
     if (error) {
+      setIsSubmitting(false);
       setError(error.message);
       return;
     }
-    router.push("/import");
+
+    // Role-based, not hard-coded — a Verifier landing on /import (the
+    // Admin's screen) after every successful sign-in was a real bug, found
+    // via manual testing. Neither /import nor /review require this lookup
+    // to be correct for security (both re-check role themselves), but a
+    // direct redirect avoids an unnecessary extra hop for the common case.
+    const role = await fetchCurrentRole(supabaseBrowser);
+    setIsSubmitting(false);
+
+    if (role === "admin") {
+      router.push("/import");
+      return;
+    }
+    if (role === "verifier") {
+      router.push("/review");
+      return;
+    }
+
+    // No known back-office role (or the lookup failed) — don't leave the
+    // browser signed in with nowhere valid to go.
+    await supabaseBrowser.auth.signOut();
+    setError("This account doesn't have back-office access.");
   };
 
   const handleGoogleSignIn = async () => {
     setError(null);
+    // Can't look up role before redirecting here — the OAuth round-trip is
+    // a full-page redirect through Google, so there's no chance to run
+    // this page's own JS in between. Lands on /import instead, which now
+    // does its own admin-only role check (see (app)/import/page.tsx) and
+    // bounces a non-admin on to /review — one extra hop for this path
+    // only, not a gap, since /import's guard is the same one that applies
+    // regardless of how someone arrives there.
     const { error } = await supabaseBrowser.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/import` },
