@@ -1,10 +1,16 @@
 # Progress Snapshot — philaindiacovers-admin
 
 **Last updated:** 2026-08-11
-**Last session worked on:** A real, priority security fix found via the user's own first Google sign-in — `verify_cover()`'s role guard silently passed a caller with no `profiles` row at all, closed both the symptom and the root cause, before finalizing the SSO-enablement PR
+**Last session worked on:** T-08's cross-repo dependency — a new `storage.objects` read policy (App repo's consumer catalogue needs Collectors to be able to download a verified cover's image), plus correcting stale "public read" wording at the source now that the app's no-anonymous-browsing design is locked
 
 ## Current state
-`main` is at `8618f3f`. Seven Walking Skeleton tasks plus T-06.5/logout/routing-fix all merged (PRs #7–#10, branches auto-deleted). This session's work (Google SSO enablement, `provision-user.mjs` extension, and the NULL-role fix below) is built, tested, and verified live, all on branch `us-34-enable-google-sso` (not yet merged — PR to be opened via GitHub web UI, `gh` still not installed).
+`main` is at `40b0bf7` — **the `us-34-enable-google-sso` branch (Google SSO enablement + the NULL-role fix below) is merged (PR #11)**, caught by this session's own fetch-first check: the "In progress"/"not yet merged" note directly below was stale by the time this session started, since the user merged it via the GitHub web UI between sessions without that being visible in conversation. Exactly the kind of drift `/standup`'s fetch-first step exists to catch. Eight Walking Skeleton tasks plus T-06.5/logout/routing-fix/SSO all merged (PRs #7–#11, branches auto-deleted).
+
+**This session (T-08 cross-repo work, on branch `t08-consumer-storage-read-policy`):**
+- New migration `20260811190000_cover_images_verified_read_policy.sql` — Collector can now download a *verified* cover's image via `storage.objects`, scoped to `authenticated` only (not `anon`). Applied to the live dev project (`supabase db push`) and verified two ways: a real curl round-trip (anon key → 400 unchanged, a real script-provisioned test Collector session → 200) and `coverImageAccess.integration.test.ts`'s two updated/new cases (Collector-verified flipped from reject to accept; a new anon-still-rejected case).
+- **Corrected `API-Integration-Contracts.md` §4 at the source**: it said "public read access... mirrors the same RLS logic as the `covers` table itself" — stale, since `covers` itself has zero `anon` grant specifically because this app has a locked no-anonymous-browsing non-goal. The new policy matches that scoping exactly. Also fixed the same stale word in this doc's T-07 non-goals cell and `Threat-Model.md`'s Storage scope-note row.
+- **Walking Skeleton table gained T-07.5** (Electron scaffolding + minimal Collector login, App repo) as its own inserted task between T-06.5/T-07 and T-08 — same justification shape as T-06.5 (planned-upfront infrastructure serving different stories, US-01/US-03, than T-08's own US-07), not a small unplanned discovery folded into an existing row.
+- 81/81 tests passing (2 new, in `coverImageAccess.integration.test.ts`), `next build` / `npm run lint` / `check:secrets` all clean. Not yet merged — see "In progress" below.
 
 - **The user's first real Google sign-in (`krutimlogic@gmail.com`, brand-new account, default `collector` role) surfaced something much bigger than the UX question that prompted it — see `docs/Threat-Model.md`'s new Elevation-of-Privilege row for the full writeup, summarized here:**
 
@@ -142,18 +148,22 @@ Five earlier Walking Skeleton tasks done and merged:
 **Jira status (confirmed 2026-08-06):** US-35 Done, US-36 Done, all other 40 stories To Do.
 
 ## In progress
-**Everything this session — Google SSO enablement, the `provision-user.mjs` extension, and the `verify_cover()` NULL-role fix + signup trigger — is code-complete and verified live** (80/80 tests passing, `next build` and `npm run lint` clean) but **not yet merged**, still on branch `us-34-enable-google-sso`, no PR opened yet. **One real open decision before that PR closes**: what to do with the orphaned real `krutimlogic@gmail.com` account (see above) — recommended delete-and-resign-in, awaiting the user's confirmation.
+**This session's T-08 storage-policy work is code-complete and verified live** (81/81 tests, `next build`/`npm run lint`/`check:secrets` clean) but **not yet merged**, on branch `t08-consumer-storage-read-policy`, no PR opened yet (`gh` still not installed — PR to be opened via the GitHub web UI).
+
+**Resolved since the last snapshot, caught by this session's fetch-first check**: the previous "not yet merged, no PR opened" note about `us-34-enable-google-sso` was stale — the user merged PR #11 via the GitHub web UI between sessions. The status of the one open item that note carried (**the orphaned real `krutimlogic@gmail.com` account** — recommended delete-and-resign-in) wasn't independently confirmed by this session, since it's a manual dashboard action separate from the code merge — carrying it forward below rather than assuming it was handled.
 
 ## Next up
-1. **Decide and act on the orphaned real `krutimlogic@gmail.com` account** (see "Current state" above) — the one open item blocking this PR from closing.
+1. **Confirm what happened with the orphaned real `krutimlogic@gmail.com` account** (recommended: delete it, let a fresh Google sign-in go through the now-corrected trigger path) — carried forward, not confirmed resolved by this session.
 
-2. **Still genuinely untested: a Verifier signing in via Google.** Google SSO is now enabled and exercised for real (a brand-new/collector-role sign-in, which is what led to this session's fixes), but the *Verifier*-via-Google → `/review` path specifically has still never been run — only reasoned about (`/import`'s admin-only guard is the safety net for that redirect, since OAuth's full-page flow can't run our JS to look up role first). Confirm it for real once there's a reason to (e.g. if the Verifier ever wants to use Google instead of password login).
+2. **Still genuinely untested: a Verifier signing in via Google.** Carried forward — only reasoned about, not yet run for real.
 
-**Done, not just planned:** the two real Admin/Verifier accounts are provisioned (`krutimlogic+admin@gmail.com`, `krutimlogic+verifier@gmail.com` — credentials given directly to the user in-session, not recorded here) — the user can log in as either, land on the correct page, log back out, and (Verifier only) actually work the review queue.
+3. **Merge this session's T-08 branch** (`t08-consumer-storage-read-policy`) — code-complete and verified live, just needs a PR opened and merged.
 
-Then **T-08/T-09** (US-07, US-11) — the consumer app's catalogue list + detail view, in the **App repo**, not this one. Note for whoever picks these up: they'll need their own **public**, verified-only `storage.objects` read policy for `cover-images` — a distinct design question from T-07's Admin/Verifier one, deliberately not built yet (see the Threat-Model scope note).
+**Done, not just planned:** the two real Admin/Verifier accounts are provisioned (`krutimlogic+admin@gmail.com`, `krutimlogic+verifier@gmail.com`), and a real test Collector account (`krutimlogic+collector@gmail.com`) is now provisioned too via the App repo's `scripts/provision-collector.mjs` — credentials given directly to the user in-session, not recorded here.
 
-**Jira status (confirmed 2026-08-10, re-checked and unchanged at session close):** US-34, US-35, US-36, and US-39 are all Done, all other 38 stories To Do. Logout and the role-based-routing fix are both folded under US-34 via a comment — confirmed, no separate story needed. This resolves the open question carried since the last session.
+**T-08's Admin-side dependency is done** (this session — the `storage.objects` policy above). What's left of T-08/T-09 (US-07, US-11 — the consumer app's catalogue list + detail view) lives entirely in the **App repo**, not this one.
+
+**Jira status (confirmed 2026-08-10, not re-checked this session):** US-34, US-35, US-36, and US-39 are all Done, all other 38 stories To Do.
 
 ## Known gotchas from recent sessions
 - **Every `auth.users` INSERT now auto-creates a matching `profiles` row (`role = 'collector'`) via `handle_new_user()` — any code that creates a user and then writes `profiles.role` must `upsert`, not `insert`, or it hits a duplicate-key conflict.** Already fixed everywhere this applied as of 2026-08-11 (`scripts/provision-user.mjs`, `src/lib/testHelpers/createTestUser.ts`) — but if a new script or test ever creates a user via `admin.auth.admin.createUser()` and separately sets their role, remember this trigger fires first.
