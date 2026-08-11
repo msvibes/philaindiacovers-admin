@@ -6,9 +6,15 @@ import { createTestUser, deleteTestUser, type TestUser } from "@/lib/testHelpers
 // Integration tier (see docs/Test-Strategy.md). Proves the T-07 storage.objects
 // policies (20260808153406_cover_images_review_read_policies.sql) actually
 // gate image access the way covers' own RLS gates row access: Admin reads
-// any status' image, Verifier reads draft/flagged only, Collector reads
-// neither — checked live against the real Storage API, not asserted from
-// the SQL alone.
+// any status' image, Verifier reads draft/flagged only — checked live
+// against the real Storage API, not asserted from the SQL alone.
+//
+// Extended for T-08 (20260811190000_cover_images_verified_read_policy.sql):
+// Collector can now download a *verified* cover's image (still nothing for
+// draft/flagged), and — since that new policy is scoped to `authenticated`
+// only, not `anon`, per the corrected design in API-Integration-Contracts.md
+// §4 — a fully anonymous caller still can't, checked directly rather than
+// assumed from the policy text.
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -114,12 +120,25 @@ describe.skipIf(!hasCredentials)("cover-images Storage read policies (T-07)", ()
     expect(data).toBeNull();
   });
 
-  it("Collector cannot download a verified cover's image", async () => {
-    // Confirms Collector wasn't accidentally granted what only Admin has —
-    // no policy exists for Collector at any status, this is the direct
-    // check rather than an inference from the other two Collector cases.
+  it("Collector can download a verified cover's image (T-08)", async () => {
+    // As of 20260811190000_cover_images_verified_read_policy.sql, this is
+    // no longer a rejection case — it flipped from "cannot" to "can" when
+    // that migration landed. Left red here instead of updated would
+    // directly contradict the new policy's own intent.
     const path = await seedCoverWithImage("verified", "collector-verified-img");
     const { data, error } = await users.collector.client.storage.from(BUCKET).download(path);
+    expect(error).toBeNull();
+    expect(data).not.toBeNull();
+  });
+
+  it("anon (no session at all) still cannot download a verified cover's image (T-08)", async () => {
+    // Confirms the new policy is authenticated-scoped, not accidentally
+    // public — this app has a locked non-goal of no anonymous browsing
+    // anywhere, and this is the direct check for that boundary on the new
+    // policy specifically, not an inference from covers' own anon rejection.
+    const anonClient = createClient(supabaseUrl!, anonKey!, { auth: { persistSession: false } });
+    const path = await seedCoverWithImage("verified", "anon-verified-img");
+    const { data, error } = await anonClient.storage.from(BUCKET).download(path);
     expect(error).not.toBeNull();
     expect(data).toBeNull();
   });
