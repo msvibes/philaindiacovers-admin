@@ -4,7 +4,7 @@
 **Last session worked on:** Role-based login routing — fixing a real bug found via the user's own manual testing (Verifier landing on the Admin's `/import` screen), plus two preventive CLAUDE.md/Implementation-Brief rules added to stop this class of bug recurring
 
 ## Current state
-`main` is at `2ad2304`. T-06.5, T-07, and the logout+`/import`-guard work are all merged (PRs #7/#8/#9, branches auto-deleted). This session's fix is built and verified, on branch `us-39-role-based-routing` (not yet merged — PR to be opened via GitHub web UI, `gh` still not installed).
+`main` is at `8618f3f`. T-06.5, T-07, the logout+`/import`-guard work, and the role-based-routing fix (below) are all merged (PRs #7/#8/#9/#10, branches auto-deleted).
 
 - **Bug: `/login` always redirected to `/import` regardless of role — a Verifier logging in normally landed on the Admin's screen.** Found via the user's own manual testing, not part of any open task. Root cause, confirmed precisely rather than assumed: (1) `handlePasswordSignIn` hard-coded `router.push("/import")` after any successful sign-in, no role lookup at all; (2) `/import`'s session guard (added for the logout work) checked only that a session existed, not the role, so a Verifier passed straight through and the full Bulk Import UI rendered for them.
 
@@ -114,7 +114,7 @@ Five earlier Walking Skeleton tasks done and merged:
 **Jira status (confirmed 2026-08-06):** US-35 Done, US-36 Done, all other 40 stories To Do.
 
 ## In progress
-**The role-based routing fix is code-complete and verified live** (all four role×page combinations checked individually, 77/77 tests passing, `next build` and `npm run lint` clean) but **not yet merged** — still on branch `us-39-role-based-routing`, no PR opened yet. Next session (or later this one): open the PR via GitHub web UI (no `gh` CLI), self-review, merge, then update this file. The App repo's `CLAUDE.md` companion change was already committed directly to its `main` (see "Current state" above for the reasoning).
+Nothing. The role-based routing fix is done — merged via PR #10, `main` at `8618f3f`. Local branch `us-39-role-based-routing` deleted after confirming the merge (fetch-first caught it before this was assumed). The App repo's `CLAUDE.md` companion change was already committed directly to its `main` (see "Current state" above for the reasoning).
 
 ## Next up
 One real prerequisite still carried over from T-06.5:
@@ -126,7 +126,7 @@ One real prerequisite still carried over from T-06.5:
 
 Then **T-08/T-09** (US-07, US-11) — the consumer app's catalogue list + detail view, in the **App repo**, not this one. Note for whoever picks these up: they'll need their own **public**, verified-only `storage.objects` read policy for `cover-images` — a distinct design question from T-07's Admin/Verifier one, deliberately not built yet (see the Threat-Model scope note).
 
-**Jira status (confirmed 2026-08-10):** US-34, US-35, US-36, and US-39 are all Done — this resolved the reminders carried in the last two sessions' notes about T-06.5/T-06/T-07 needing to move to Done; no action needed, already done by the time this was checked. All other 38 stories are To Do. Logout still has no story of its own identified — worth checking whether it belongs under US-34 or needs its own, next time Jira is open. This session's routing fix likely belongs under the same story as logout, for the same reason.
+**Jira status (confirmed 2026-08-10, re-checked and unchanged at session close):** US-34, US-35, US-36, and US-39 are all Done, all other 38 stories To Do. Logout and the role-based-routing fix are both folded under US-34 via a comment — confirmed, no separate story needed. This resolves the open question carried since the last session.
 
 ## Known gotchas from recent sessions
 - **`fetchCurrentRole()` (`src/lib/currentRole.ts`) is the one place to call `current_profile_role()` from the browser for UI routing/display — reuse it, don't call the RPC ad hoc.** It's UI-only by design: a stale or spoofed client-side role value can misroute the UI but can never grant real access, since RLS/`verify_cover()`/`requireRole()` all re-derive the role server-side independently regardless. `current_profile_role()` now has its own explicit `grant execute ... to authenticated` (`20260810234304_grant_execute_current_profile_role.sql`), matching `verify_cover()`'s pattern — it was initially reachable only via Postgres' unrevoked default `PUBLIC` execute grant (caught and fixed before merge, same fragile-default category as T-03/T-04's earlier grant findings), so this is now a deliberate, documented decision, not an accident of what nobody's revoked yet.
