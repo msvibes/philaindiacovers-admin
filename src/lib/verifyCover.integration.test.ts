@@ -31,7 +31,11 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
   async function createDraftCover(suffix: string) {
     const { data, error } = await admin
       .from("covers")
-      .insert({ name_of_cover: `${runId} ${suffix}`, verification_status: "draft" })
+      .insert({
+        name_of_cover: `${runId} ${suffix}`,
+        verification_status: "draft",
+        image_file: `${runId}/${suffix}.jpg`,
+      })
       .select("id")
       .single();
     if (error || !data) {
@@ -48,6 +52,7 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
         name_of_cover: `${runId} ${suffix}`,
         verification_status: "flagged",
         place_of_issue: "Original place of issue",
+        image_file: `${runId}/${suffix}.jpg`,
       })
       .select("id")
       .single();
@@ -65,6 +70,7 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
         name_of_cover: `${runId} ${suffix}`,
         verification_status: "verified",
         place_of_issue: "Original place of issue",
+        image_file: `${runId}/${suffix}.jpg`,
       })
       .select("id")
       .single();

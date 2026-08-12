@@ -46,6 +46,7 @@ describe.skipIf(!hasCredentials)("POST /api/check-duplicate-covers (T-03, T-06.5
         gi_item_name: `${runId} Existing Item`,
         date_of_issue: "2021-06-15",
         verification_status: "draft",
+        image_file: `${runId}/existing.jpg`,
       })
       .select("id")
       .single();

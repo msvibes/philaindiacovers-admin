@@ -31,6 +31,7 @@ describe.skipIf(!hasCredentials)("fetchReviewQueue (T-07)", () => {
         name_of_cover: `${runId} ${suffix}`,
         gi_item_name: `${runId} ${suffix}`,
         verification_status: status,
+        image_file: `${runId}/${suffix}.jpg`,
       })
       .select("id")
       .single();
@@ -86,6 +87,7 @@ describe.skipIf(!hasCredentials)("fetchReviewQueue (T-07)", () => {
         gi_item_name: `${runId} with-circle`,
         verification_status: "draft",
         postal_circle_id: circle!.id,
+        image_file: `${runId}/with-circle.jpg`,
       })
       .select("id")
       .single();
