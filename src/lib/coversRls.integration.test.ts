@@ -36,9 +36,21 @@ describe.skipIf(!hasCredentials)("covers RLS policies (T-04)", () => {
     const { data: covers, error: coversErr } = await admin
       .from("covers")
       .insert([
-        { name_of_cover: `${runId} draft`, verification_status: "draft" },
-        { name_of_cover: `${runId} flagged`, verification_status: "flagged" },
-        { name_of_cover: `${runId} verified`, verification_status: "verified" },
+        {
+          name_of_cover: `${runId} draft`,
+          verification_status: "draft",
+          image_file: `${runId}/draft.jpg`,
+        },
+        {
+          name_of_cover: `${runId} flagged`,
+          verification_status: "flagged",
+          image_file: `${runId}/flagged.jpg`,
+        },
+        {
+          name_of_cover: `${runId} verified`,
+          verification_status: "verified",
+          image_file: `${runId}/verified.jpg`,
+        },
       ])
       .select("id, verification_status");
     if (coversErr || !covers) {
@@ -78,7 +90,11 @@ describe.skipIf(!hasCredentials)("covers RLS policies (T-04)", () => {
   it("Admin can insert and delete a cover", async () => {
     const { data: inserted, error: insertErr } = await users.admin.client
       .from("covers")
-      .insert({ name_of_cover: `${runId} admin-insert`, verification_status: "draft" })
+      .insert({
+        name_of_cover: `${runId} admin-insert`,
+        verification_status: "draft",
+        image_file: `${runId}/admin-insert.jpg`,
+      })
       .select();
     expect(insertErr).toBeNull();
     expect(inserted).toHaveLength(1);

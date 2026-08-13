@@ -29,7 +29,7 @@ Seeded once with the 23 officially verified India Post circles (see Reference Da
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid, PK | |
-| image_file | text | Supabase Storage path |
+| image_file | text, not null | Supabase Storage path. **Constraint added 2026-08-12**: was nullable at the schema level with only T-02's import validation preventing it in practice — closed at the source once confirmed empty (0 of 1 live row had a null value) |
 | name_of_cover | text | |
 | gi_item_name | text | |
 | gi_registration_number | text, nullable | Extracted from source text where present |
