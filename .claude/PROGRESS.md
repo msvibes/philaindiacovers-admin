@@ -4,7 +4,7 @@
 **Last session worked on:** `covers.image_file` NOT NULL constraint — closing a real nullable-at-the-DB-level gap flagged during T-09 planning in the App repo, same class of issue as the NULL-role guard below
 
 ## Current state
-`main` is at `2b5a2a4` — **PR #12 (`t08-consumer-storage-read-policy`, described just below) is merged.** Nine Walking Skeleton tasks plus T-06.5/T-07.5/logout/routing-fix/SSO all merged in this repo (PRs #7–#12, branches auto-deleted).
+`main` is at `5b0b54e` — **PR #13 (`covers-image-file-not-null`, described just below) is also merged**, confirmed via fetch-first at standup (the note below claiming it was still unmerged was stale, written before the merge). Nine Walking Skeleton tasks plus T-06.5/T-07.5/logout/routing-fix/SSO all merged in this repo (PRs #7–#13, branches auto-deleted, no local branches remaining besides `main`).
 
 **This session (on branch `covers-image-file-not-null`):**
 - `covers.image_file` was nullable at the schema level with nothing but T-02's import-time validation preventing a null value in practice — same pattern as the NULL-role guard below (default-allow at the DB, held together by app discipline alone). **Checked empirically before applying, not assumed**: queried the live table directly — 0 of 1 total row had a null `image_file`. Migration `20260812153000_covers_image_file_not_null.sql` applied to the live project; re-verified after applying that a null-`image_file` insert is now genuinely rejected (curl POST → 400, confirmed no row was created).
@@ -153,20 +153,18 @@ Five earlier Walking Skeleton tasks done and merged:
 **Jira status (confirmed 2026-08-06):** US-35 Done, US-36 Done, all other 40 stories To Do.
 
 ## In progress
-**This session's `image_file` NOT NULL fix is code-complete and verified live** (81/81 tests, `next build`/`npm run lint`/`check:secrets` clean) but **not yet merged**, on branch `covers-image-file-not-null`, no PR opened yet (`gh` still not installed — PR to be opened via the GitHub web UI).
+Nothing. PR #13 (`covers.image_file` NOT NULL) is merged — the previous "not yet merged" note was stale, caught and corrected at this standup's fetch-first check, same pattern as PR #12 was caught the session before.
 
-**Resolved since the last snapshot, caught by this session's fetch-first check**: PR #12 (`t08-consumer-storage-read-policy`) is merged — the previous "not yet merged" note was stale. The orphaned `krutimlogic@gmail.com` account and the untested Verifier-via-Google path (below) still aren't independently confirmed resolved — carried forward again, not assumed.
+**Also corrected this standup, not just the merge status**: the orphaned real `krutimlogic@gmail.com` account, carried forward as "still not confirmed resolved" across the last two snapshots, actually *was* resolved earlier in the very session that first raised it — the later `image_file`-focused snapshot just didn't know that and defaulted to caution instead of re-checking. For the record, precisely: the orphaned account (created before `handle_new_user()` existed, so it had no `profiles` row) was deleted; the user then signed in fresh with the same email via real Google OAuth (not a script simulation); a `profiles` row was confirmed auto-created by the trigger (`role = 'collector'`, verified via direct query); the account was then promoted to `admin` via `scripts/provision-user.mjs`, also confirmed via direct query afterward. Fully done — not an open item.
 
 ## Next up
-1. **Merge this session's branch** (`covers-image-file-not-null`) — code-complete and verified live, just needs a PR opened and merged.
-2. **Confirm what happened with the orphaned real `krutimlogic@gmail.com` account** (recommended: delete it, let a fresh Google sign-in go through the now-corrected trigger path) — carried forward across multiple sessions now, still not confirmed resolved.
-3. **Still genuinely untested: a Verifier signing in via Google.** Carried forward — only reasoned about, not yet run for real.
+1. **Still genuinely untested: a Verifier signing in via Google.** Only reasoned about (relies on `/import`'s admin-only guard as the safety net for that redirect path), never actually run — carry forward until there's a real reason to (e.g. the Verifier wants to use Google instead of password login).
 
-**Done, not just planned:** the two real Admin/Verifier accounts are provisioned (`krutimlogic+admin@gmail.com`, `krutimlogic+verifier@gmail.com`), and a real test Collector account (`krutimlogic+collector@gmail.com`) is provisioned too via the App repo's `scripts/provision-collector.mjs` — credentials given directly to the user in-session, not recorded here.
+**Done, not just planned:** the two real Admin/Verifier accounts are provisioned (`krutimlogic+admin@gmail.com`, `krutimlogic+verifier@gmail.com`), and a real test Collector account (`krutimlogic+collector@gmail.com`) is provisioned too via the App repo's `scripts/provision-collector.mjs` — credentials given directly to the user in-session, not recorded here. `krutimlogic@gmail.com` (the user's own real Google account) is also now a working Admin account, per the resolution above.
 
-**T-08 and T-09 are both now the App repo's concern** (US-07, US-11 — catalogue list + detail view) — T-08 is done and merged there; T-09 is in progress as of this session. Nothing further expected here unless another cross-repo dependency turns up.
+**T-08 and T-09 are both now the App repo's concern** (US-07, US-11 — catalogue list + detail view) — T-08 is done and merged there; T-09 is in progress as of this session per the prior snapshot. Nothing further expected here unless another cross-repo dependency turns up.
 
-**Jira status (confirmed 2026-08-12): US-07 is Done, US-01/US-03 correctly left unchanged** (T-07.5's scaffolding/login work doesn't fully cover those stories' scope). All other stories To Do per the last full check (2026-08-10), not re-verified in full this session.
+**Jira status (confirmed 2026-08-12, this standup):** US-07, US-11, US-34, US-35, US-36, and US-39 are all Done. US-01 and US-03 are correctly still To Do (never moved, only partially implemented by T-07.5's scaffolding/login work — matches the prior session's own note, not a regression). All other stories To Do.
 
 ## Known gotchas from recent sessions
 - **Every `auth.users` INSERT now auto-creates a matching `profiles` row (`role = 'collector'`) via `handle_new_user()` — any code that creates a user and then writes `profiles.role` must `upsert`, not `insert`, or it hits a duplicate-key conflict.** Already fixed everywhere this applied as of 2026-08-11 (`scripts/provision-user.mjs`, `src/lib/testHelpers/createTestUser.ts`) — but if a new script or test ever creates a user via `admin.auth.admin.createUser()` and separately sets their role, remember this trigger fires first.
