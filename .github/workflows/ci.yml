@@ -1,0 +1,88 @@
+# CI gate per ADR-006 and docs/Test-Strategy.md's "CI Gate" section: lint,
+# typecheck, and the full Vitest suite (unit + live integration) must all
+# pass before merge. Playwright E2E is documented as aspirational in
+# Test-Strategy.md but was never actually built, so it's not part of this
+# workflow — nothing to run yet.
+#
+# One-time manual setup this workflow depends on and cannot create itself:
+# a GitHub Environment named `ci-dev-supabase` (Settings > Environments)
+# holding three secrets — NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+# SUPABASE_SERVICE_ROLE_KEY — pointed at the DEV Supabase project only,
+# never production. Until that environment and its secrets exist, the
+# "Verify integration test credentials" step below will fail every run,
+# on purpose (see that step for why this is intentional, not a bug).
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancels a still-running check for an older push the moment a newer one
+# lands on the same PR, so rapid iterative pushes can't pile up multiple
+# concurrent integration-test runs against the shared dev Supabase project.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    environment: ci-dev-supabase
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The integration test files (src/**/*.integration.test.ts) use
+      # `describe.skipIf(!hasCredentials)` so a missing .env.local is a
+      # quiet, expected no-op for local dev. In CI that same behavior is
+      # dangerous: a missing/misconfigured secret would make the test step
+      # exit 0 having silently run zero integration tests, reporting green
+      # with weaker coverage than a PR with no CI at all, since nobody
+      # would think to double check something CI already claims passed.
+      # This step turns that into a hard, loud failure before the test
+      # step ever runs, by asserting all three required env vars are
+      # actually non-empty right now, from the same secrets the test step
+      # below uses (job-level `env:` above, single source of truth so the
+      # two steps can't drift out of sync with each other).
+      - name: Verify integration test credentials are present
+        run: |
+          missing=()
+          [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] && missing+=("NEXT_PUBLIC_SUPABASE_URL")
+          [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ] && missing+=("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+          [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] && missing+=("SUPABASE_SERVICE_ROLE_KEY")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing required Supabase credentials for CI: ${missing[*]}. Without these, the integration test suites (src/**/*.integration.test.ts) would silently skip via describe.skipIf() instead of failing - see docs/Test-Strategy.md's CI Gate section. Add these three secrets to the 'ci-dev-supabase' GitHub Environment (Settings > Environments), pointed at the DEV Supabase project only, never production."
+            exit 1
+          fi
+          echo "All required Supabase credentials are present."
+
+      - name: Test (unit + live integration)
+        run: npm test
+
+      # Runs `next build` then this repo's own service-role-key leak
+      # guardrail (scripts/check-no-secret-leak.mjs) against both
+      # git-tracked files and the compiled client bundle - see
+      # package.json's build script and docs/Threat-Model.md. This is the
+      # first time that guardrail runs anywhere other than a local
+      # machine.
+      - name: Build (also runs the secret-leak guardrail)
+        run: npm run build
