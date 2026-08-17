@@ -162,7 +162,7 @@ Nothing. PR #13 (`covers.image_file` NOT NULL) is merged — the previous "not y
 
 **Done, not just planned:** the two real Admin/Verifier accounts are provisioned (`krutimlogic+admin@gmail.com`, `krutimlogic+verifier@gmail.com`), and a real test Collector account (`krutimlogic+collector@gmail.com`) is provisioned too via the App repo's `scripts/provision-collector.mjs` — credentials given directly to the user in-session, not recorded here. `krutimlogic@gmail.com` (the user's own real Google account) is also now a working Admin account, per the resolution above.
 
-**T-08 and T-09 are both now the App repo's concern** (US-07, US-11 — catalogue list + detail view) — T-08 is done and merged there; T-09 is in progress as of this session per the prior snapshot. Nothing further expected here unless another cross-repo dependency turns up.
+**T-08 and T-09 are both now the App repo's concern** (US-07, US-11 — catalogue list + detail view) — both done and merged there, confirmed via Jira (US-11 Done) and the user directly (T-09 was built and merged a while ago; the "in progress" note here was a stale carryover from an earlier App-repo snapshot, corrected at this standup). Nothing further expected here unless another cross-repo dependency turns up.
 
 **Jira status (confirmed 2026-08-12, this standup):** US-07, US-11, US-34, US-35, US-36, and US-39 are all Done. US-01 and US-03 are correctly still To Do (never moved, only partially implemented by T-07.5's scaffolding/login work — matches the prior session's own note, not a regression). All other stories To Do.
 
