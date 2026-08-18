@@ -23,3 +23,7 @@ Vitest for pure-logic/security-relevant units (`npm test`). Not a UI testing set
 
 ## Branch/PR conventions
 Same as the consumer app repo: branch per story, PR to `main`, self-reviewed before merge.
+
+**Direct-to-main exception for docs-only changes (explicit policy as of 2026-08-17):** `PROGRESS.md`, `CLAUDE.md`, `docs/**`, and `README.md` — pure documentation/process, never executed — may be pushed straight to `main`, no branch/PR required. Nothing else qualifies, even for a "tiny" change: `src/**`, `supabase/migrations/**`, `package.json`/`package-lock.json`, and `.github/workflows/**` always require a real branch + PR + passing CI.
+
+This exists because `main` now has genuinely enforced branch protection (two active rulesets — `main-1` blocks deletion/force-push, `main-2` requires the `ci` status check to pass before merge). Repo-owner bypass on a GitHub ruleset applies universally, with no way to scope it by file path — so this boundary is a deliberate, scoped exception to that enforcement, written down so it stays a decision, not a gap nobody chose.
