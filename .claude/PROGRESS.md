@@ -4,9 +4,11 @@
 **Last session worked on:** GitHub Actions CI/CD pipeline (ADR-006/Test-Strategy.md's long-planned "Session 7" work) end-to-end, plus a documentation-accuracy sweep across both repos. No single Story ID — this was infrastructure/process work, not a Walking Skeleton task or a US-## user story.
 
 ## Current state
-`main` is at `df383f7` — **PR #14 (`ci-github-actions-pipeline`) is merged** (merged 2026-08-17T14:47 via the GitHub web UI mid-session, caught via fetch-first, same recurring pattern this file has flagged before). Nine Walking Skeleton tasks plus T-06.5/T-07.5/logout/routing-fix/SSO/CI all merged in this repo (PRs #7–#14, branches auto-deleted, no local branches remaining besides `main`).
+`main` is at `41df60d` — **PR #14 (`ci-github-actions-pipeline`) is merged** (merged 2026-08-17T14:47 via the GitHub web UI mid-session, caught via fetch-first, same recurring pattern this file has flagged before). Nine Walking Skeleton tasks plus T-06.5/T-07.5/logout/routing-fix/SSO/CI all merged in this repo (PRs #7–#14, branches auto-deleted, no local branches remaining besides `main`).
 
 **This repo is now public (2026-08-17)**, after a full git-history secret scan came back clean (see "Next up" #3 below for the full record) — `main` now has two active rulesets, `main-1` (deletion/force-push protection) and `main-2` (requires the `ci` status check to pass before merge), both independently confirmed via the API, not just the settings UI.
+
+**The direct-to-main bypass this enabled is now an explicit, written policy, not an implicit default (commit `41df60d`, `CLAUDE.md`)**: only `PROGRESS.md`, `CLAUDE.md`, `docs/**`, and `README.md` are eligible for a direct-to-main push; everything else (`src/**`, `supabase/migrations/**`, `package.json`/`package-lock.json`, `.github/workflows/**`) requires a real branch + PR + passing CI, no exceptions. Same policy added to the App repo's `CLAUDE.md` too, for consistency — though App is still private with no rulesets of its own yet, so the policy is adopted there proactively, not because its own branch protection required it.
 
 **This session (branch `ci-github-actions-pipeline`, PR #14, merged; four more commits direct-to-main afterward as docs-accuracy fixes, same category as prior sessions' PROGRESS.md corrections):**
 
