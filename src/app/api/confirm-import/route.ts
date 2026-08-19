@@ -7,6 +7,7 @@ import { extractGiRegistrationNumber } from "@/lib/extractGiRegistrationNumber";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { normalizePostalCircleName } from "@/lib/normalizePostalCircle";
 import { isDuplicateCover, type ExistingCoverKey } from "@/lib/isDuplicateCover";
+import { normalizeFileName } from "@/lib/normalizeFileName";
 import type { CoverRow } from "@/lib/coverImportRow";
 
 // Access-control gap open since T-05 (the more serious of the two — this
@@ -53,7 +54,11 @@ export async function POST(request: NextRequest) {
   }
 
   const imageFiles = formData.getAll("images").filter((v): v is File => v instanceof File);
-  const imageByName = new Map(imageFiles.map((f) => [f.name, f]));
+  // Keyed on the normalized name so an uploaded file's name and the
+  // CSV's Image File Name value match even if one is NFC and the other
+  // NFD for an accented character (same visible name, different bytes —
+  // see normalizeFileName.ts).
+  const imageByName = new Map(imageFiles.map((f) => [normalizeFileName(f.name), f]));
 
   const { data: circles, error: circlesError } = await supabaseAdmin
     .from("postal_circles")
@@ -96,7 +101,7 @@ export async function POST(request: NextRequest) {
       ) as CoverRow;
 
       const imageFileName = sanitized["Image File Name"];
-      const imageFile = imageByName.get(imageFileName);
+      const imageFile = imageByName.get(normalizeFileName(imageFileName));
       if (!imageFile) {
         results.push({
           rowNumber,
