@@ -9,6 +9,7 @@ import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 import { fetchExistingCoverKeys } from "@/lib/checkDuplicateCovers";
 import { authorizedFetch } from "@/lib/authorizedFetch";
 import { isDuplicateCover } from "@/lib/isDuplicateCover";
+import { normalizeFileName } from "@/lib/normalizeFileName";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { CSV_COLUMNS, type CoverRow } from "@/lib/coverImportRow";
 
@@ -79,7 +80,11 @@ export default function BulkImportPage() {
       return;
     }
 
-    const imageFileNames = new Set(imageFiles.map((f) => f.name));
+    // Normalized so this preview check agrees with the server's own
+    // matching (confirm-import/route.ts) — an uploaded file's name and
+    // the CSV's value can be NFC/NFD-mismatched for the same visible
+    // accented character otherwise (see normalizeFileName.ts).
+    const imageFileNames = new Set(imageFiles.map((f) => normalizeFileName(f.name)));
     setIsChecking(true);
 
     Papa.parse<CoverRow>(csvFile, {
@@ -119,7 +124,7 @@ export default function BulkImportPage() {
           return {
             rowNumber: i + 1,
             data,
-            missingImage: !imageFileNames.has((data["Image File Name"] ?? "").trim()),
+            missingImage: !imageFileNames.has(normalizeFileName((data["Image File Name"] ?? "").trim())),
             duplicate: isDuplicateCover(
               data["Name of the GI Tag / Item"],
               data["Date of Issue"],
