@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDuplicateCoverRow } from "./isDuplicateCoverRow";
+import { isDuplicateCoverRow, computeBatchDuplicateFlags } from "./isDuplicateCoverRow";
 import type { ExistingCoverKey } from "./isDuplicateCover";
 
 const existing: ExistingCoverKey[] = [
@@ -77,5 +77,86 @@ describe("isDuplicateCoverRow", () => {
 
   it("does not flag when the existing list is empty", () => {
     expect(isDuplicateCoverRow("Bandar Laddu", "15/11/2021", [])).toBe(false);
+  });
+});
+
+describe("computeBatchDuplicateFlags", () => {
+  it("flags a real, live regression: two rows in the SAME csv batch sharing GI Item + Date of Issue, neither pre-existing in the database", () => {
+    // The actual bug, the actual data: real 287-row import, rows 47 and
+    // 48. Both rows' "Name of the GI Tag / Item" is the identical literal
+    // text "Kullu Shawl" and both are dated 20/10/2021 — they differ only
+    // in "Name of the Cover" ("Kullu Shawl" vs "Kullu Shawl (Logo)"),
+    // which is not part of the duplicate key at all. Neither was in the
+    // database beforehand (existing: []). The preview showed BOTH as OK,
+    // since it checked each row only against the fixed, DB-fetched
+    // `existing` list. /api/confirm-import's own loop (which already
+    // tracked same-batch inserts via existing.push()) correctly created
+    // row 47 then rejected row 48 as a duplicate of it — this is the
+    // preview gap that closes.
+    const flags = computeBatchDuplicateFlags(
+      [
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false },
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false },
+      ],
+      []
+    );
+    expect(flags).toEqual([false, true]);
+  });
+
+  it("still flags a row matching a genuinely pre-existing database row, independent of any within-batch collision", () => {
+    const existing: ExistingCoverKey[] = [{ gi_item_name: "Bandar Laddu", date_of_issue: "2021-11-15" }];
+    const flags = computeBatchDuplicateFlags(
+      [{ giItemName: "Bandar Laddu", dateOfIssue: "15/11/2021", missingImage: false }],
+      existing
+    );
+    expect(flags).toEqual([true]);
+  });
+
+  it("a third row matching the first two also gets flagged, not just the second", () => {
+    const flags = computeBatchDuplicateFlags(
+      [
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false },
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false },
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false },
+      ],
+      []
+    );
+    expect(flags).toEqual([false, true, true]);
+  });
+
+  it("a row with a missing image never contributes its key — mirrors /api/confirm-import skipping the missing-image row before it would ever reach existing.push()", () => {
+    const flags = computeBatchDuplicateFlags(
+      [
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: true },
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false },
+      ],
+      []
+    );
+    // First row is itself not a duplicate (nothing existing yet) despite
+    // its missing image — missingImage and duplicate are independent
+    // flags. What matters here is the SECOND row: had the first row's key
+    // been pushed anyway, this would wrongly be true.
+    expect(flags).toEqual([false, false]);
+  });
+
+  it("a row with an unparseable date never contributes its key, matching computeCoverKey's own null result for that case", () => {
+    const flags = computeBatchDuplicateFlags(
+      [
+        { giItemName: "Kullu Shawl", dateOfIssue: "not a date", missingImage: false },
+        { giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false },
+      ],
+      []
+    );
+    expect(flags).toEqual([false, false]);
+  });
+
+  it("does not mutate the existing array passed in", () => {
+    const existing: ExistingCoverKey[] = [{ gi_item_name: "Bandar Laddu", date_of_issue: "2021-11-15" }];
+    const existingCopy = [...existing];
+    computeBatchDuplicateFlags(
+      [{ giItemName: "Kullu Shawl", dateOfIssue: "20/10/2021", missingImage: false }],
+      existing
+    );
+    expect(existing).toEqual(existingCopy);
   });
 });

@@ -35,8 +35,67 @@ export function isDuplicateCoverRow(
   rawDateOfIssue: string,
   existing: ExistingCoverKey[]
 ): boolean {
+  const key = computeCoverKey(rawGiItemName, rawDateOfIssue);
+  if (!key) return false;
+  return isDuplicateCover(key.gi_item_name, key.date_of_issue, existing);
+}
+
+// Same raw-CSV-row-to-key conversion isDuplicateCoverRow uses internally,
+// exposed so a caller building up its own running "existing" list (see
+// import/page.tsx's within-batch duplicate tracking, mirroring
+// /api/confirm-import's own existing.push() step) can reuse the identical
+// cleaning logic instead of re-deriving it. Returns null for a row whose
+// date doesn't parse, matching isDuplicateCoverRow's own "not a duplicate"
+// treatment of that case.
+export function computeCoverKey(
+  rawGiItemName: string,
+  rawDateOfIssue: string
+): { gi_item_name: string; date_of_issue: string } | null {
   const dateResult = parseDateOfIssue(rawDateOfIssue);
-  if (!dateResult.ok) return false;
+  if (!dateResult.ok) return null;
   const { cleanedName } = extractGiRegistrationNumber(rawGiItemName);
-  return isDuplicateCover(cleanedName, dateResult.isoDate, existing);
+  return { gi_item_name: cleanedName, date_of_issue: dateResult.isoDate };
+}
+
+export type BatchDuplicateCheckRow = {
+  giItemName: string;
+  dateOfIssue: string;
+  missingImage: boolean;
+};
+
+// Batch counterpart to isDuplicateCoverRow: walks rows in CSV order,
+// mirroring /api/confirm-import's own loop, where `existing` starts as
+// the DB-fetched list and grows via existing.push() after every row it
+// successfully creates — so a later row sharing the same GI Item + Date
+// of Issue as an earlier row in the SAME batch is caught there too, not
+// just against pre-existing database rows.
+//
+// Without this, the preview (import/page.tsx) fetched `existing` once and
+// never updated it while walking the CSV, so two rows in the same file
+// sharing a GI Item + Date both showed as OK — proven with a real,
+// already-imported pair: CSV rows 47 and 48, whose "Name of the GI Tag /
+// Item" is the identical literal text "Kullu Shawl" in both, both dated
+// 20/10/2021 (they differ only in "Name of the Cover", which isn't part
+// of the duplicate key). The preview showed both OK; Confirm Import
+// (which already did carry this same-batch tracking) correctly created
+// the first and rejected the second as a duplicate — a real, observed
+// mismatch this closes by giving the preview the identical tracking.
+//
+// A row only contributes its key to that running list here under the same
+// three conditions /api/confirm-import requires before it would reach an
+// actual insert: not missing its image, a parseable date, and not itself
+// already flagged as a duplicate.
+export function computeBatchDuplicateFlags(
+  rows: BatchDuplicateCheckRow[],
+  existing: ExistingCoverKey[]
+): boolean[] {
+  const batchExisting = [...existing];
+  return rows.map((row) => {
+    const duplicate = isDuplicateCoverRow(row.giItemName, row.dateOfIssue, batchExisting);
+    if (!row.missingImage && !duplicate) {
+      const key = computeCoverKey(row.giItemName, row.dateOfIssue);
+      if (key) batchExisting.push(key);
+    }
+    return duplicate;
+  });
 }
