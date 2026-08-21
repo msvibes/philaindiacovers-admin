@@ -8,6 +8,7 @@ import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { normalizePostalCircleName } from "@/lib/normalizePostalCircle";
 import { isDuplicateCover, type ExistingCoverKey } from "@/lib/isDuplicateCover";
 import { normalizeFileName } from "@/lib/normalizeFileName";
+import { sanitizeStorageKey } from "@/lib/sanitizeStorageKey";
 import type { CoverRow } from "@/lib/coverImportRow";
 
 // Access-control gap open since T-05 (the more serious of the two — this
@@ -137,7 +138,17 @@ export async function POST(request: NextRequest) {
       // upload, best-effort delete the orphaned file — avoids ever ending
       // up with a covers row whose image_file points at nothing, which is
       // worse than a leftover unreferenced file.
-      const storagePath = `${randomUUID()}/${imageFileName}`;
+      //
+      // The filename portion (not the UUID folder, already Storage-safe)
+      // goes through sanitizeStorageKey — a real, accented filename that
+      // matches correctly against the uploaded file (normalizeFileName,
+      // above) can still be rejected by Storage's own S3-safe key
+      // validation, a separate constraint found the hard way importing
+      // the real spreadsheet (row 25 matched in preview, then failed
+      // with "Invalid key" at upload). image_file stores this same
+      // sanitized path, not the original name, since it has to exactly
+      // match whatever key Storage actually holds the file under.
+      const storagePath = `${randomUUID()}/${sanitizeStorageKey(imageFileName)}`;
       const { error: uploadError } = await supabaseAdmin.storage
         .from(BUCKET)
         .upload(storagePath, imageFile, {

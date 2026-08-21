@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient } from "@supabase/supabase-js";
-import { createTestUser, deleteTestUser, type TestUser } from "@/lib/testHelpers/createTestUser";
+import {
+  createTestUser,
+  deleteTestUser,
+  retryOnJwtIssuedAtFuture,
+  type TestUser,
+} from "@/lib/testHelpers/createTestUser";
 
 // Integration tier (see docs/Test-Strategy.md): talks to the real Supabase
 // dev project, not a mock. T-06's fit criterion — calling verify_cover()
@@ -258,7 +263,17 @@ describe.skipIf(!hasCredentials)("verify_cover() (T-06)", () => {
     if (createErr || !created.user) {
       throw new Error(`Failed to create no-profile test user: ${createErr?.message}`);
     }
-    await admin.from("profiles").delete().eq("id", created.user.id);
+    // Same create-then-immediately-write shape as createTestUser.ts's own
+    // profiles upsert (createUser() -> instant service-role write against
+    // that brand-new row) — subject to the identical "JWT issued at
+    // future" flake, confirmed for real on this exact line in CI. Shares
+    // that helper's retry rather than duplicating the loop inline.
+    const { error: deleteProfileErr } = await retryOnJwtIssuedAtFuture(() =>
+      admin.from("profiles").delete().eq("id", created.user.id)
+    );
+    if (deleteProfileErr) {
+      throw new Error(`Failed to delete profiles row for no-profile test user: ${deleteProfileErr.message}`);
+    }
 
     const orphanClient = createClient(supabaseUrl!, anonKey!, { auth: { persistSession: false } });
     await orphanClient.auth.signInWithPassword({ email, password });
