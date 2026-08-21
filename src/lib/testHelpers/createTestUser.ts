@@ -4,20 +4,44 @@ export type TestRole = "admin" | "verifier" | "collector";
 
 export type TestUser = { userId: string; client: SupabaseClient; accessToken: string };
 
-// "JWT issued at future" from the immediately-following profiles upsert
-// (createUser() -> instantly write against that brand-new user's row) is
-// a real, intermittent characteristic of that create-then-immediately-act
-// sequence — confirmed on two genuinely different environments (this
-// machine's own clock, and a fresh GitHub-hosted CI runner), not a bug
-// tied to one machine. Retried narrowly, only for this exact error
-// signature; anything else still throws immediately, unretried — masking
-// a real failure behind a retry would be worse than the flake itself.
 const JWT_ISSUED_AT_FUTURE = "JWT issued at future";
-const PROFILE_UPSERT_MAX_ATTEMPTS = 3;
-const PROFILE_UPSERT_RETRY_DELAY_MS = 300;
+const RETRY_MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 300;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// "JWT issued at future" on a service-role write made immediately after
+// admin.auth.admin.createUser() (against the row that call just created)
+// is a real, intermittent characteristic of that create-then-immediately-
+// act sequence — confirmed on two genuinely different environments (this
+// machine's own clock, and a fresh GitHub-hosted CI runner), not a bug
+// tied to one machine or one specific write. Shared so every such
+// sequence in the integration suite retries the identical narrow way,
+// instead of duplicating this loop inline wherever the pattern recurs
+// (createTestUser's own profiles upsert below, and the no-profile-row
+// case in verifyCover.integration.test.ts, which deletes the row
+// createUser() just implicitly created). Retries ONLY this exact error
+// signature — anything else is returned as-is on the first attempt, so a
+// real failure can't hide behind this.
+export async function retryOnJwtIssuedAtFuture<E extends { message: string }>(
+  // PromiseLike, not Promise: Supabase's query builders are thenable
+  // (awaitable) but not real Promise instances — a strict Promise return
+  // type here would reject `() => admin.from(...).upsert(...)` even
+  // though `await`-ing it works fine.
+  operation: () => PromiseLike<{ error: E | null }>
+): Promise<{ error: E | null }> {
+  let result: { error: E | null } = { error: null };
+  for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
+    result = await operation();
+    if (!result.error) break;
+    if (!result.error.message.includes(JWT_ISSUED_AT_FUTURE) || attempt === RETRY_MAX_ATTEMPTS) {
+      break;
+    }
+    await sleep(RETRY_DELAY_MS);
+  }
+  return result;
 }
 
 // Shared throwaway-account helper for integration tests (T-04's pattern,
@@ -48,18 +72,9 @@ export async function createTestUser(
   // already auto-created a profiles row with role='collector' the moment
   // createUser() ran — upsert to the actually-requested role rather than
   // insert, which would now hit a duplicate-key conflict.
-  let profileErr: { message: string } | null = null;
-  for (let attempt = 1; attempt <= PROFILE_UPSERT_MAX_ATTEMPTS; attempt++) {
-    const result = await admin
-      .from("profiles")
-      .upsert({ id: created.user.id, role }, { onConflict: "id" });
-    profileErr = result.error;
-    if (!profileErr) break;
-    if (!profileErr.message.includes(JWT_ISSUED_AT_FUTURE) || attempt === PROFILE_UPSERT_MAX_ATTEMPTS) {
-      break;
-    }
-    await sleep(PROFILE_UPSERT_RETRY_DELAY_MS);
-  }
+  const { error: profileErr } = await retryOnJwtIssuedAtFuture(() =>
+    admin.from("profiles").upsert({ id: created.user.id, role }, { onConflict: "id" })
+  );
   if (profileErr) {
     throw new Error(`Failed to set profiles.role for test ${role} user: ${profileErr.message}`);
   }
