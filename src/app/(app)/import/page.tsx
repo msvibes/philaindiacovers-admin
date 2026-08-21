@@ -8,7 +8,7 @@ import { fetchCurrentRole } from "@/lib/currentRole";
 import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 import { fetchExistingCoverKeys } from "@/lib/checkDuplicateCovers";
 import { authorizedFetch } from "@/lib/authorizedFetch";
-import { isDuplicateCover } from "@/lib/isDuplicateCover";
+import { isDuplicateCoverRow } from "@/lib/isDuplicateCoverRow";
 import { normalizeFileName } from "@/lib/normalizeFileName";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { CSV_COLUMNS, type CoverRow } from "@/lib/coverImportRow";
@@ -125,9 +125,16 @@ export default function BulkImportPage() {
             rowNumber: i + 1,
             data,
             missingImage: !imageFileNames.has(normalizeFileName((data["Image File Name"] ?? "").trim())),
-            duplicate: isDuplicateCover(
+            // isDuplicateCoverRow parses the raw CSV date before
+            // comparing (same as /api/confirm-import's own server-side
+            // check) — isDuplicateCover alone does an exact string
+            // match, and a raw CSV date ("15/11/2021") never equals an
+            // existing row's canonical ISO date ("2021-11-15"), which
+            // silently made this preview report "no issues" for a real
+            // 287-row import that had 24 already-existing duplicates.
+            duplicate: isDuplicateCoverRow(
               data["Name of the GI Tag / Item"],
-              data["Date of Issue"],
+              data["Date of Issue"] ?? "",
               existing
             ),
             invalidDate: !dateResult.ok,
