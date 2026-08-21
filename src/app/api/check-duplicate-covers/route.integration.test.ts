@@ -52,6 +52,26 @@ describe.skipIf(!hasCredentials)("POST /api/check-duplicate-covers (T-03, T-06.5
       .single();
     if (error || !data) throw new Error(`Failed to seed a cover: ${error?.message}`);
     coverIds.push(data.id);
+
+    // Seeded exactly the way confirm-import/route.ts actually stores it:
+    // gi_item_name is the CLEANED name, with the "(GI No. ...)" annotation
+    // already stripped by extractGiRegistrationNumber before insert - the
+    // real, live shape of every already-imported cover that originally had
+    // a GI number embedded in its CSV name.
+    const { data: giData, error: giError } = await adminClient
+      .from("covers")
+      .insert({
+        name_of_cover: `${runId} gi-annotated`,
+        gi_item_name: `${runId} Annotated Item`,
+        gi_registration_number: "999",
+        date_of_issue: "2021-07-20",
+        verification_status: "draft",
+        image_file: `${runId}/gi-annotated.jpg`,
+      })
+      .select("id")
+      .single();
+    if (giError || !giData) throw new Error(`Failed to seed a GI-annotated cover: ${giError?.message}`);
+    coverIds.push(giData.id);
   }, 30_000);
 
   afterAll(async () => {
@@ -78,6 +98,22 @@ describe.skipIf(!hasCredentials)("POST /api/check-duplicate-covers (T-03, T-06.5
     const body = await res.json();
     expect(body.existing).toHaveLength(1);
     expect(body.existing[0].gi_item_name).toBe(`${runId} Existing Item`);
+  });
+
+  it("finds a GI-annotated existing cover when queried with the raw, un-stripped CSV text a real client actually sends", async () => {
+    // The real bug, reproduced directly: the client sends the raw
+    // "Name of the GI Tag / Item" text, annotation and all - this route
+    // must clean it the same way confirm-import cleaned it before
+    // insert, or the .in() query silently returns nothing for every
+    // already-imported cover that originally had a GI number embedded in
+    // its name.
+    const res = await POST(
+      buildRequest([`${runId} Annotated Item (GI No. 999)`], users.admin.accessToken)
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.existing).toHaveLength(1);
+    expect(body.existing[0].gi_item_name).toBe(`${runId} Annotated Item`);
   });
 
   it("T-06.5: rejects a request with no bearer token", async () => {
