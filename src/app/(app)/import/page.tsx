@@ -8,7 +8,7 @@ import { fetchCurrentRole } from "@/lib/currentRole";
 import { sanitizeCsvCell } from "@/lib/sanitizeCsvCell";
 import { fetchExistingCoverKeys } from "@/lib/checkDuplicateCovers";
 import { authorizedFetch } from "@/lib/authorizedFetch";
-import { isDuplicateCoverRow } from "@/lib/isDuplicateCoverRow";
+import { computeBatchDuplicateFlags } from "@/lib/isDuplicateCoverRow";
 import { normalizeFileName } from "@/lib/normalizeFileName";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { CSV_COLUMNS, type CoverRow } from "@/lib/coverImportRow";
@@ -119,24 +119,31 @@ export default function BulkImportPage() {
           return;
         }
 
+        const missingImageFlags = results.data.map(
+          (data) => !imageFileNames.has(normalizeFileName((data["Image File Name"] ?? "").trim()))
+        );
+
+        // Catches a WITHIN-BATCH duplicate (two rows in this same CSV
+        // sharing GI Item + Date of Issue), not just a match against
+        // pre-existing database rows — see computeBatchDuplicateFlags for
+        // why this is needed and the real "Kullu Shawl" / "Kullu Shawl
+        // (Logo)" pair that exposed the gap.
+        const duplicateFlags = computeBatchDuplicateFlags(
+          results.data.map((data, i) => ({
+            giItemName: data["Name of the GI Tag / Item"],
+            dateOfIssue: data["Date of Issue"] ?? "",
+            missingImage: missingImageFlags[i],
+          })),
+          existing
+        );
+
         const rows: PreviewRow[] = results.data.map((data, i) => {
           const dateResult = parseDateOfIssue(data["Date of Issue"] ?? "");
           return {
             rowNumber: i + 1,
             data,
-            missingImage: !imageFileNames.has(normalizeFileName((data["Image File Name"] ?? "").trim())),
-            // isDuplicateCoverRow parses the raw CSV date before
-            // comparing (same as /api/confirm-import's own server-side
-            // check) — isDuplicateCover alone does an exact string
-            // match, and a raw CSV date ("15/11/2021") never equals an
-            // existing row's canonical ISO date ("2021-11-15"), which
-            // silently made this preview report "no issues" for a real
-            // 287-row import that had 24 already-existing duplicates.
-            duplicate: isDuplicateCoverRow(
-              data["Name of the GI Tag / Item"],
-              data["Date of Issue"] ?? "",
-              existing
-            ),
+            missingImage: missingImageFlags[i],
+            duplicate: duplicateFlags[i],
             invalidDate: !dateResult.ok,
             dateError: dateResult.ok ? undefined : dateResult.error,
           };
