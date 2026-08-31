@@ -1,7 +1,23 @@
 # Progress Snapshot — philaindiacovers-admin
 
-**Last updated:** 2026-08-21
-**Last session worked on:** Pre-import QA on the real 287-row bulk import (US-36's T-05 functionality), continued — still a genuine defect-fixing stretch, not new story work. No US-## story of its own; per the user's decision, to be folded into US-36 via a Jira comment once this is fully wrapped up (still not done as of this update — reminder: update Jira to reflect PRs #15–#19 once this session's work is reviewed).
+**Last updated:** 2026-08-31
+**Last session worked on:** T-39 (App repo's addendum numbering; KAN-69 in Jira) — separating the shared dev/CI Supabase project from production. **Done, both repos.** Real infrastructure work executed from a session rooted in the App repo, which had genuine file/git access to this repo's full working tree too (confirmed directly, not assumed) — see the entry below for full detail, and the App repo's own PROGRESS.md for the complete cross-repo writeup.
+
+## T-39 — separate dev/CI Supabase project from production (KAN-69) (2026-08-31)
+
+**The risk, unchanged since 2026-08-17 (see this file's own prior "pre-launch checklist item" entries below)**: this repo's `ci-dev-supabase` GitHub Environment pointed at `hcaivtygzwjemjngcmji` — the same project serving the real app and the App repo's own CI. This repo's 9 live integration test files (`coversRls`, `handleNewUser`, `login`, `logout`, `reviewQueue`, `verifyCover`, `coverImageAccess`, plus unit-adjacent ones) ran against it on every PR.
+
+**Closed by**: a genuinely new Free-tier Supabase project, created by the user directly via the dashboard (no account-level Management API token requested or held). All 20 files in `supabase/migrations/` (this repo's own, the canonical schema source for both repos) replayed against it — verified, not inferred: `postal_circles` = 23 rows, 8 RLS policies present across `covers`/`postal_circles`/`verification_audit_log`/`storage.objects`. This repo's own full test suite then run for real against the new project's live credentials: **17 files, 110/110 passed**, including the live RLS/auth/`verify_cover`/review-queue integration tier.
+
+**Re-pointed**: this repo's `ci-dev-supabase` CI secrets (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) via `gh secret set`, and local `.env.local` (also dropped a stale "PLACEHOLDER — not a real key" comment on the service-role line that no longer described reality — it already held a real value). A real CI run confirmed green, step-by-step, against the new project — see this same PR.
+
+**Deliberately not touched**: this repo's **Vercel** production deployment env vars — a third place holding these credentials, separate from GitHub Actions secrets and local `.env.local`, confirmed via this repo's own `CLAUDE.md` ("Deployed on Vercel's free tier"). Vercel keeps pointing at the existing project, which is now this app's reserved production project going forward. "Backup restore testing" (mentioned in the same `AI-Agent-Implementation-Brief.md` §10.4 section as a related, separate, quarterly practice) was not attempted — not part of T-39's fit criteria.
+
+**Real cross-repo scope decision, confirmed with the user before any secret was touched**: this task was originally filed only in the App repo's own addendum, but fixing only that repo would have left this repo's CI still hitting the same project once it becomes production — genuinely relocating the risk, not closing it. Executed in both repos in the same pass once that was confirmed.
+
+**T-39 is Done in this repo too.** Jira KAN-69 should be moved to Done — confirm on the board (tracked from the App repo's side; this repo has no direct Jira write access either).
+
+## Older entries
 
 ## Current state
 `main` is at `e50a3a1` — **PR #19 is merged** (2026-08-21T10:46). PRs #15–#19 all merged, no open PRs, no stray local or remote branches (all three feature branches from this stretch were fully merged and cleaned up locally at this wrapup; their remotes were already auto-deleted on merge). The real 287-row import has now actually been run for real — see below, the bulk of this session was investigating and fixing bugs found live during and after that run, not before it.
