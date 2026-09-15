@@ -76,6 +76,8 @@ If a written record (PROGRESS.md, a Jira status, a prior session's summary) disa
 
 **A decided requirement with no owner will quietly not happen.** When a requirement is agreed to in conversation, it needs to be attached to a concrete, trackable task in the same breath — not left to "obviously get built eventually" as part of a larger task's implied scope. *Precedent: three separate real gaps this session (a Date-of-Issue field, a Home screen, dark mode) were each genuinely decided at some point but never given a task ID, and each was later discovered missing from the actual running app.*
 
+**No bug fix, enhancement, or feature may cause a regression.** Before any PR is considered done, verify not just the new thing but that nothing adjacent broke — run the full test suite, and for anything touching shared components, shared state, or shared visual tokens, do a live pass on the adjacent features that share that surface. *Precedent: this formalizes discipline the App repo already practiced informally but inconsistently (T-30/T-35's dark-mode continuity catches, T-34's tooltip-clipping catch) — same rule, same reasoning, applied here since both repos share this document's standing-rules structure verbatim.*
+
 ## Known gotchas
 - Bulk import must validate every image filename exists BEFORE creating any entries, and must flag likely duplicates (matching GI Item + Date of Issue against existing covers of any status) — see FR-17, FR-20.
 - A corrected Flagged entry returns to pending-review, not directly back to Verified — only the Verifier can re-mark it Verified (FR-24). Don't build a shortcut around this even for the Admin's convenience.
