@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdminClient";
 import { requireRole } from "@/lib/requireRole";
@@ -7,23 +6,32 @@ import { extractGiRegistrationNumber } from "@/lib/extractGiRegistrationNumber";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { normalizePostalCircleName } from "@/lib/normalizePostalCircle";
 import { isDuplicateCover, type ExistingCoverKey } from "@/lib/isDuplicateCover";
-import { normalizeFileName } from "@/lib/normalizeFileName";
-import { sanitizeStorageKey } from "@/lib/sanitizeStorageKey";
 import type { CoverRow } from "@/lib/coverImportRow";
 
 // Access-control gap open since T-05 (the more serious of the two — this
-// route writes covers rows and uploads to Storage, not just reads), closed
-// by T-06.5: every request now needs a verified Admin session (see
-// requireRole.ts) — a real server-side check, not a client-supplied claim.
+// route writes covers rows, not just reads), closed by T-06.5: every
+// request now needs a verified Admin session (see requireRole.ts) — a
+// real server-side check, not a client-supplied claim.
 //
 // T-02's client-side checks (missing image, duplicate) are convenience
 // only, not a security boundary — every check that matters is re-run here
 // independently: sanitization, duplicate detection (including within this
-// same batch, which a client-only check can't catch), and image presence.
+// same batch, which a client-only check can't catch).
+//
+// Image bytes no longer travel through this route at all (launch-scale
+// bulk import work, 2026-09): Vercel Functions cap request bodies at
+// 4.5MB on every plan, confirmed against Vercel's own current docs, so a
+// single multipart request carrying every image in a ~500-row batch
+// doesn't scale. The client now uploads each image directly to Storage
+// via uploadCoverImage.ts (requires the Admin-only storage.objects INSERT
+// policy, 20260916133752_cover_images_admin_write_policy.sql) and submits
+// only the resulting storagePath here — this route's own job shrinks to
+// exactly what only the server can safely do: the duplicate re-check and
+// the covers insert.
 
 const BUCKET = "cover-images";
 
-type SubmittedRow = { rowNumber: number; data: CoverRow };
+type SubmittedRow = { rowNumber: number; data: CoverRow; storagePath: string };
 
 type RowResult = {
   rowNumber: number;
@@ -37,29 +45,11 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(request, "admin");
   if (auth instanceof NextResponse) return auth;
 
-  const formData = await request.formData();
-
-  const rowsRaw = formData.get("rows");
-  if (typeof rowsRaw !== "string") {
-    return NextResponse.json({ error: "Missing 'rows' field" }, { status: 400 });
-  }
-
-  let rows: SubmittedRow[];
-  try {
-    rows = JSON.parse(rowsRaw);
-  } catch {
-    return NextResponse.json({ error: "'rows' is not valid JSON" }, { status: 400 });
-  }
+  const body = await request.json().catch(() => null);
+  const rows: unknown = body?.rows;
   if (!Array.isArray(rows)) {
     return NextResponse.json({ error: "'rows' must be an array" }, { status: 400 });
   }
-
-  const imageFiles = formData.getAll("images").filter((v): v is File => v instanceof File);
-  // Keyed on the normalized name so an uploaded file's name and the
-  // CSV's Image File Name value match even if one is NFC and the other
-  // NFD for an accented character (same visible name, different bytes —
-  // see normalizeFileName.ts).
-  const imageByName = new Map(imageFiles.map((f) => [normalizeFileName(f.name), f]));
 
   const { data: circles, error: circlesError } = await supabaseAdmin
     .from("postal_circles")
@@ -74,8 +64,8 @@ export async function POST(request: NextRequest) {
   // use for comparison, not the raw incoming text.
   const candidateGiItemNames = Array.from(
     new Set(
-      rows
-        .map((r) => sanitizeCsvCell(r.data["Name of the GI Tag / Item"] ?? ""))
+      (rows as SubmittedRow[])
+        .map((r) => sanitizeCsvCell(r.data?.["Name of the GI Tag / Item"] ?? ""))
         .map((v) => extractGiRegistrationNumber(v).cleanedName)
         .filter(Boolean)
     )
@@ -95,22 +85,16 @@ export async function POST(request: NextRequest) {
 
   const results: RowResult[] = [];
 
-  for (const { rowNumber, data: raw } of rows) {
+  for (const { rowNumber, data: raw, storagePath } of rows as SubmittedRow[]) {
     try {
+      if (typeof storagePath !== "string" || storagePath.length === 0) {
+        results.push({ rowNumber, status: "failed", error: "Missing storagePath — image was not uploaded" });
+        continue;
+      }
+
       const sanitized = Object.fromEntries(
         Object.entries(raw).map(([key, value]) => [key, sanitizeCsvCell(String(value ?? ""))])
       ) as CoverRow;
-
-      const imageFileName = sanitized["Image File Name"];
-      const imageFile = imageByName.get(normalizeFileName(imageFileName));
-      if (!imageFile) {
-        results.push({
-          rowNumber,
-          status: "failed",
-          error: `Missing image file: ${imageFileName || "(blank)"}`,
-        });
-        continue;
-      }
 
       const { cleanedName, giRegistrationNumber } = extractGiRegistrationNumber(
         sanitized["Name of the GI Tag / Item"]
@@ -134,35 +118,6 @@ export async function POST(request: NextRequest) {
       const normalizedCircle = normalizePostalCircleName(sanitized["Issuing Postal Circle"]);
       const postalCircleId = circleIdByName.get(normalizedCircle) ?? null;
 
-      // Upload first, then insert. If the insert fails after a successful
-      // upload, best-effort delete the orphaned file — avoids ever ending
-      // up with a covers row whose image_file points at nothing, which is
-      // worse than a leftover unreferenced file.
-      //
-      // The filename portion (not the UUID folder, already Storage-safe)
-      // goes through sanitizeStorageKey — a real, accented filename that
-      // matches correctly against the uploaded file (normalizeFileName,
-      // above) can still be rejected by Storage's own S3-safe key
-      // validation, a separate constraint found the hard way importing
-      // the real spreadsheet (row 25 matched in preview, then failed
-      // with "Invalid key" at upload). image_file stores this same
-      // sanitized path, not the original name, since it has to exactly
-      // match whatever key Storage actually holds the file under.
-      const storagePath = `${randomUUID()}/${sanitizeStorageKey(imageFileName)}`;
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from(BUCKET)
-        .upload(storagePath, imageFile, {
-          contentType: imageFile.type || "application/octet-stream",
-        });
-      if (uploadError) {
-        results.push({
-          rowNumber,
-          status: "failed",
-          error: `Image upload failed: ${uploadError.message}`,
-        });
-        continue;
-      }
-
       const { data: inserted, error: insertError } = await supabaseAdmin
         .from("covers")
         .insert({
@@ -183,9 +138,12 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (insertError || !inserted) {
-        const { error: cleanupError } = await supabaseAdmin.storage
-          .from(BUCKET)
-          .remove([storagePath]);
+        // Insert failed after the client already uploaded the image —
+        // clean up the now-orphaned Storage object rather than leaving a
+        // covers-less file behind. Same discipline this route always had,
+        // just on the delete side only now that upload itself happens
+        // client-side.
+        const { error: cleanupError } = await supabaseAdmin.storage.from(BUCKET).remove([storagePath]);
         const baseError = insertError?.message ?? "Insert failed";
         results.push({
           rowNumber,
