@@ -12,7 +12,7 @@ Two non-obvious correctness points flagged and confirmed *before* building, not 
 
 **Caught and verified a real edge case before trusting it against real data, not after**: three of those five rows had no actual diff, meaning the update payload sent would be an empty object `{}`. Before running Confirm Update against the real pre-existing rows, checked in isolation against a throwaway test cover whether an empty `.update({})` might unintentionally fire the correction-reset trigger on a Verified cover it has no business touching — confirmed it's a genuine no-op (no trigger fire, no audit row). Only then ran the real confirm, and independently reconfirmed afterward via `updated_at === created_at` on the three real rows that they were genuinely never written to.
 
-**Not yet merged** — CI green, `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`, ready for review.
+**Not yet merged** — CI green, `mergeable: MERGEABLE`, ready for review. (`mergeStateStatus` drifted from `CLEAN` to `BEHIND` after two docs-only commits landed on `main` post-branch — no real conflict, GitHub will still merge cleanly.)
 
 ## PR #24 — Launch-scale bulk import: direct-to-Storage image upload (2026-09-16)
 Scoped for the ~500-cover commercial-launch dataset. Researched Vercel's actual current limits before sizing anything (not memory): Function request/response bodies are capped at **4.5MB on every plan**, unrelated to duration or plan tier — `confirm-import` sent every image in one multipart `FormData` POST, which doesn't scale past a small batch. Vercel's own recommended fix for exactly this shape of problem is direct client-to-storage upload, bypassing the Function entirely — same fix applied here, just against Supabase Storage instead of Vercel Blob.
