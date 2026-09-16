@@ -12,6 +12,9 @@ import { computeBatchDuplicateFlags } from "@/lib/isDuplicateCoverRow";
 import { normalizeFileName } from "@/lib/normalizeFileName";
 import { parseDateOfIssue } from "@/lib/parseDateOfIssue";
 import { CSV_COLUMNS, type CoverRow } from "@/lib/coverImportRow";
+import { uploadCoverImage, runWithConcurrency } from "@/lib/uploadCoverImage";
+
+const UPLOAD_CONCURRENCY = 5;
 
 type PreviewRow = {
   rowNumber: number;
@@ -168,22 +171,46 @@ export default function BulkImportPage() {
       (r) => !r.missingImage && !r.duplicate && !r.invalidDate
     );
 
-    const formData = new FormData();
-    formData.append(
-      "rows",
-      JSON.stringify(qualifyingRows.map((r) => ({ rowNumber: r.rowNumber, data: r.data })))
-    );
-    for (const file of imageFiles) {
-      formData.append("images", file);
-    }
+    // Each row's image is uploaded directly from the browser to Storage
+    // (bounded concurrency, not all ~500 at once) rather than sent through
+    // this route as request-body bytes — Vercel Functions cap request
+    // bodies at 4.5MB on every plan, which a multi-hundred-row batch's
+    // combined image bytes would exceed. See uploadCoverImage.ts.
+    const imageByName = new Map(imageFiles.map((f) => [normalizeFileName(f.name), f]));
+    const uploadResults = await runWithConcurrency(qualifyingRows, UPLOAD_CONCURRENCY, async (row) => {
+      const file = imageByName.get(normalizeFileName((row.data["Image File Name"] ?? "").trim()));
+      if (!file) {
+        return { row, ok: false as const, error: "Missing image file" };
+      }
+      const result = await uploadCoverImage(file);
+      return result.ok
+        ? { row, ok: true as const, storagePath: result.storagePath }
+        : { row, ok: false as const, error: `Image upload failed: ${result.error}` };
+    });
+
+    const uploadFailures: ConfirmRowResult[] = uploadResults
+      .filter((r): r is Extract<typeof r, { ok: false }> => !r.ok)
+      .map((r) => ({ rowNumber: r.row.rowNumber, status: "failed", error: r.error }));
+
+    const rowsToSubmit = uploadResults
+      .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
+      .map((r) => ({ rowNumber: r.row.rowNumber, data: r.row.data, storagePath: r.storagePath }));
 
     try {
-      const res = await authorizedFetch("/api/confirm-import", { method: "POST", body: formData });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(body.error ?? `Confirm import failed (${res.status})`);
+      let serverResults: ConfirmRowResult[] = [];
+      if (rowsToSubmit.length > 0) {
+        const res = await authorizedFetch("/api/confirm-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: rowsToSubmit }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body.error ?? `Confirm import failed (${res.status})`);
+        }
+        serverResults = body.results ?? [];
       }
-      setConfirmResults(body.results ?? []);
+      setConfirmResults([...uploadFailures, ...serverResults].sort((a, b) => a.rowNumber - b.rowNumber));
     } catch (err) {
       setConfirmError(err instanceof Error ? err.message : String(err));
     } finally {
