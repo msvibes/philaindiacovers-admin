@@ -14,6 +14,7 @@ import {
   type BulkUpdatePlanRow,
   type ExistingCoverForUpdate,
 } from "@/lib/computeBulkUpdatePlan";
+import { buildVerifiedCatalogueCsv, type ExportableCover } from "@/lib/buildVerifiedCatalogueCsv";
 import type { CoverRow } from "@/lib/coverImportRow";
 
 const UPLOAD_CONCURRENCY = 5;
@@ -39,6 +40,8 @@ export default function BulkUpdatePage() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmResults, setConfirmResults] = useState<ConfirmRowResult[] | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +145,52 @@ export default function BulkUpdatePage() {
     });
   };
 
+  // Exports the current Verified catalogue in the exact shape this same
+  // page expects as input (CSV_COLUMNS, via buildVerifiedCatalogueCsv) —
+  // export, edit a few cells, re-upload above, with zero reformatting.
+  // A plain client-side read, no new API route: Admin already has full
+  // RLS read access to covers of any status (T-04).
+  const handleExport = async () => {
+    setExportError(null);
+    setIsExporting(true);
+    try {
+      const [coversResult, circlesResult] = await Promise.all([
+        supabaseBrowser
+          .from("covers")
+          .select(
+            "name_of_cover, gi_item_name, product_category, cancellation_description, cachet_description, overall_description, place_of_issue, postal_circle_id, date_of_issue"
+          )
+          .eq("verification_status", "verified")
+          .order("gi_item_name", { ascending: true }),
+        supabaseBrowser.from("postal_circles").select("id, name"),
+      ]);
+      if (coversResult.error) throw coversResult.error;
+      if (circlesResult.error) throw circlesResult.error;
+
+      const circleNameById = new Map<string, string>(
+        (circlesResult.data ?? []).map((c) => [c.id, c.name])
+      );
+      const csv = buildVerifiedCatalogueCsv(
+        (coversResult.data ?? []) as ExportableCover[],
+        circleNameById
+      );
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `verified-catalogue-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(
+        `Could not export the catalogue: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleConfirm = async () => {
     if (!preview) return;
     setConfirmError(null);
@@ -227,6 +276,26 @@ export default function BulkUpdatePage() {
           is being matched; use a direct correction for that instead. Any
           other blank field is left unchanged; a non-blank value overwrites.
         </p>
+      </div>
+
+      <div className="space-y-2 rounded-lg border p-6">
+        <h2 className="text-sm font-medium">Export current Verified catalogue</h2>
+        <p className="text-sm text-gray-500">
+          Downloads every Verified cover as a CSV in the same format the
+          correction file below expects — edit a few cells and feed the
+          same file back in, no reformatting needed. Image File Name is
+          left blank on export; leave it blank on reimport too unless
+          you&apos;re replacing that row&apos;s image.
+        </p>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={isExporting}
+          className="rounded border px-4 py-2 disabled:opacity-50"
+        >
+          {isExporting ? "Exporting…" : "Export Verified Catalogue (CSV)"}
+        </button>
+        {exportError && <p className="text-red-600 text-sm">{exportError}</p>}
       </div>
 
       <div className="space-y-4 rounded-lg border p-6">
